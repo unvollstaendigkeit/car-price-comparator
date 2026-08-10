@@ -27,6 +27,7 @@ and record it, never circumvent. Request volume is kept low with delays.
 from __future__ import annotations
 
 import argparse
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -349,12 +350,15 @@ def rule_variant(car: InvCar, row, require: bool) -> str:
     return MATCH if str(val).upper() == car.variant_engine.upper() else MISMATCH
 
 
-def rule_year(car: InvCar, row, tol: int) -> str:
+def rule_year(car: InvCar, row, tol: int, require_known: bool = False) -> str:
     if car.year is None:
         return NA
     val = _int(row["year"])
     if val is None:
-        return UNKNOWN
+        # Under STRICT we refuse to treat an unknown-year listing as a valid
+        # +/-1-year comparable (it would otherwise pass via "unknown never fails"
+        # and pull junk into the median, e.g. a year-less 'Toyota Rav4' shell).
+        return MISMATCH if require_known else UNKNOWN
     return MATCH if abs(val - car.year) <= tol else MISMATCH
 
 
@@ -392,7 +396,7 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
         "model": rule_model_soft(car, row),
         "fuel": rule_fuel(car, row),
         "variant": rule_variant(car, row, rules.require_same_variant),
-        "year": rule_year(car, row, rules.year_tol),
+        "year": rule_year(car, row, rules.year_tol, rules.require_known_year),
         "km": rule_km(car, row, rules.km_pct, rules.km_floor),
         "power": rule_power(car, row, rules.power_tol_kw),
         "transmission": rule_transmission(car, row, rules.require_same_transmission),
@@ -401,22 +405,43 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
     return passed, outcomes
 
 
+# Slovak/Czech title markers of parts / for-scrap ads that still carry a km
+# figure (so the price+attribute gate alone lets them through). e.g. a
+# 'Predám kompletný motor ... 108.000km' engine listing.
+_PARTS_TITLE_RE = re.compile(
+    r"\b("
+    r"na\s+diely|rozpred|"                 # selling for parts
+    r"kompletn[yý]\s+motor|"                # complete engine
+    r"n[aá]hradn[eé]\s+diel|diel[yov]|"     # spare parts
+    r"prevodovk[au]|"                       # gearbox (as the item)
+    r"dver[ei]|kapot|n[aá]raznik|blatnik|"  # doors / hood / bumper / fender
+    r"sedačk|volant|"                       # seats / steering wheel
+    r"pneumatik|disk[yov]|r[aá]fik"         # tyres / rims
+    r")\b",
+    re.I,
+)
+
+
 def qualifies_as_vehicle(row) -> bool:
     """
     Candidate-qualification gate applied BEFORE tolerance rules.
 
-    Keyword search returns spare-parts/accessory ads that carry the brand token
-    in their title but are not cars (no year/km/fuel, EUR 0-2). Those otherwise
-    pass STRICT because the tolerance rules treat missing fields as `unknown`
-    (which never fails) - and they wreck the median. A real listing must:
-      * have a plausible price (>= VEHICLE_PRICE_FLOOR), and
-      * expose at least one vehicle attribute (year OR mileage).
+    Keyword search (and even category pages) surface spare-parts/for-scrap ads
+    that carry the brand token in their title but are not whole cars. Those pass
+    the tolerance rules because missing fields are treated as `unknown` (never
+    fails) - and they wreck the median. A real listing must:
+      * have a plausible price (>= VEHICLE_PRICE_FLOOR),
+      * expose at least one vehicle attribute (year OR mileage), and
+      * NOT be an obvious parts/for-scrap ad by its title.
     This keeps even very cheap genuine cars (e.g. a 2006 Passat ~EUR 900) while
     dropping parts. It is deliberately NOT a tolerance rule, so the
     "unknown never fails" principle is preserved for real vehicles.
     """
     price = _int(row.get("price"))
     if price is None or price < VEHICLE_PRICE_FLOOR:
+        return False
+    title = row.get("title")
+    if isinstance(title, str) and _PARTS_TITLE_RE.search(title):
         return False
     has_year = _int(row.get("year")) is not None
     has_km = _int(row.get("km")) is not None
