@@ -1,0 +1,117 @@
+############################################################
+# PHASE 6 - End-to-end validation on 10 real inventory cars #
+############################################################
+
+Inventory loaded: 98 cars. Selected 10 (spanning the real distribution):
+
+  # 61 Kia Sportage | Diesel | SUV | 2019 | 141,000km | 100kW (variant_HK->kW) | EUR 11,800
+  # 41 Dacia Duster | Petrol | SUV | 2024 | 24,000km | 109kW (variant_HP->kW) | EUR 17,600
+  #  0 Hyundai I30 | Petrol | Estate | 2023 | 122,000km | 88kW (variant_HP->kW) | EUR 11,600
+  #  3 Honda Jazz | Petrol | Hatchback | 2017 | 84,748km | 74kW (variant_HP->kW) | EUR 6,000
+  #  4 Toyota Rav4 | Hybrid | SUV | 2019 | 93,545km | ?kW (missing) | EUR 17,000
+  #  6 Toyota Auris | Hybrid | Hatchback | 2015 | 150,000km | 72kW (variant_HP->kW) | EUR 7,200
+  # 21 Renault Mégane | PHEV | Estate | 2020 | 99,000km | 118kW (variant_HK->kW) | EUR 11,500
+  # 77 VW ID.3 | Electric | Hatchback | 2021 | 213,000km | 150kW (variant_HK->kW) | EUR 9,000
+  # 14 BMW X1 | Petrol | SUV | 2018 | 119,000km | 102kW (variant_HP->kW) | EUR 11,500
+  # 57 VW Passat | Diesel | Estate | 2006 | 386,000km | 103kW (variant_HK->kW) | EUR 900
+
+STRICT: year +/-1; km +/-30% (floor +/-20,000); variant must match; power +/-10kW (both-known); transmission must match (both-known)
+BROAD : year +/-3; km +/-60% (floor +/-40,000); any engine of model; power +/-30kW (both-known); transmission ignored
+
+NOTE: prices assumed EUR on BOTH sides (inventory currency UNCONFIRMED).
+Retrieval: keyword search, 2 page(s)/source, 1.2s delay. Sources never merged.
+
+==============================================================================
+CAR #61: Kia Sportage (Diesel, 2019) - inventory price EUR 11,800
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=2 (broad=8) | median=EUR 7,970 | est_market=EUR 7,970 | diff=EUR -3,830 | undervaluation=-48.1% | confidence=low  [INSUFFICIENT SAMPLE]
+  -- BAZOS -- strict comparables=3 (broad=9) | median=EUR 690 | est_market=EUR 690 | diff=EUR -11,110 | undervaluation=-1610.1% | confidence=low  [INSUFFICIENT SAMPLE]
+  cross-source: 91% median spread AB vs BZ
+==============================================================================
+CAR #41: Dacia Duster (Petrol, 2024) - inventory price EUR 17,600
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=14 (broad=17) | median=EUR 1 | est_market=EUR 1 | diff=EUR -17,599 | undervaluation=-1759900.0% | confidence=medium
+  -- BAZOS -- strict comparables=10 (broad=13) | median=EUR 122 | est_market=EUR 122 | diff=EUR -17,478 | undervaluation=-14267.3% | confidence=medium
+  cross-source: 99% median spread AB vs BZ
+==============================================================================
+CAR #0: Hyundai I30 (Petrol, 2023) - inventory price EUR 11,600
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=1 (broad=6) | median=EUR 13,000 | est_market=EUR 13,000 | diff=EUR 1,400 | undervaluation=10.8% | confidence=low  [INSUFFICIENT SAMPLE]
+  -- BAZOS -- strict comparables=7 (broad=14) | median=EUR 4,800 | est_market=EUR 4,800 | diff=EUR -6,800 | undervaluation=-141.7% | confidence=low
+  cross-source: 63% median spread AB vs BZ
+==============================================================================
+CAR #3: Honda Jazz (Petrol, 2017) - inventory price EUR 6,000
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=22 (broad=22) | median=EUR 2 | est_market=EUR 2 | diff=EUR -5,998 | undervaluation=-239900.0% | confidence=medium
+  -- BAZOS -- strict comparables=9 (broad=17) | median=EUR 2,500 | est_market=EUR 2,500 | diff=EUR -3,500 | undervaluation=-140.0% | confidence=medium
+  cross-source: 100% median spread AB vs BZ
+==============================================================================
+CAR #4: Toyota Rav4 (Hybrid, 2019) - inventory price EUR 17,000
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=16 (broad=16) | median=EUR 1 | est_market=EUR 1 | diff=EUR -16,999 | undervaluation=-1699900.0% | confidence=medium
+  -- BAZOS -- strict comparables=13 (broad=16) | median=EUR 950 | est_market=EUR 950 | diff=EUR -16,050 | undervaluation=-1689.5% | confidence=medium
+  cross-source: 100% median spread AB vs BZ
+==============================================================================
+CAR #6: Toyota Auris (Hybrid, 2015) - inventory price EUR 7,200
+  Autobazar: 39 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=31 (broad=31) | median=EUR 1 | est_market=EUR 1 | diff=EUR -7,199 | undervaluation=-719900.0% | confidence=medium
+  -- BAZOS -- strict comparables=11 (broad=16) | median=EUR 299 | est_market=EUR 299 | diff=EUR -6,901 | undervaluation=-2308.0% | confidence=medium
+  cross-source: 100% median spread AB vs BZ
+==============================================================================
+CAR #21: Renault Mégane (PHEV, 2020) - inventory price EUR 11,500
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=26 (broad=26) | median=EUR 0 | est_market=EUR 0 | diff=EUR -11,500 | undervaluation=n/a% | confidence=medium
+  -- BAZOS -- strict comparables=4 (broad=6) | median=EUR 30 | est_market=EUR 30 | diff=EUR -11,470 | undervaluation=-38233.3% | confidence=low
+==============================================================================
+CAR #77: VW ID.3 (Electric, 2021) - inventory price EUR 9,000
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=39 (broad=39) | median=EUR 125 | est_market=EUR 125 | diff=EUR -8,875 | undervaluation=-7100.0% | confidence=medium
+  -- BAZOS -- strict comparables=13 (broad=18) | median=EUR 499 | est_market=EUR 499 | diff=EUR -8,501 | undervaluation=-1703.6% | confidence=medium
+  cross-source: 75% median spread AB vs BZ
+==============================================================================
+CAR #14: BMW X1 (Petrol, 2018) - inventory price EUR 11,500
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=13 (broad=13) | median=EUR 1 | est_market=EUR 1 | diff=EUR -11,499 | undervaluation=-1149900.0% | confidence=medium
+  -- BAZOS -- strict comparables=10 (broad=12) | median=EUR 584 | est_market=EUR 584 | diff=EUR -10,916 | undervaluation=-1867.5% | confidence=medium
+  cross-source: 100% median spread AB vs BZ
+==============================================================================
+CAR #57: VW Passat (Diesel, 2006) - inventory price EUR 900
+  Autobazar: 40 listings
+  Bazos    : 40 listings
+  -- AUTOBAZAR -- strict comparables=10 (broad=13) | median=EUR 0 | est_market=EUR 0 | diff=EUR -900 | undervaluation=n/a% | confidence=medium
+  -- BAZOS -- strict comparables=9 (broad=14) | median=EUR 570 | est_market=EUR 570 | diff=EUR -330 | undervaluation=-57.9% | confidence=medium
+
+==============================================================================
+Saved per-car group CSVs and summary -> phase6_out/phase6_summary.csv
+
+=== SUMMARY (strict comparables) ===
+ row_index   brand    model     fuel    source  comparable_count  estimated_market_price  undervaluation_pct confidence  insufficient_sample
+        61     Kia Sportage   Diesel autobazar                 2                  7970.0               -48.1        low                 True
+        61     Kia Sportage   Diesel     bazos                 3                   690.0             -1610.1        low                 True
+        41   Dacia   Duster   Petrol autobazar                14                     1.0          -1759900.0     medium                False
+        41   Dacia   Duster   Petrol     bazos                10                   122.5            -14267.3     medium                False
+         0 Hyundai      I30   Petrol autobazar                 1                 13000.0                10.8        low                 True
+         0 Hyundai      I30   Petrol     bazos                 7                  4800.0              -141.7        low                False
+         3   Honda     Jazz   Petrol autobazar                22                     2.5           -239900.0     medium                False
+         3   Honda     Jazz   Petrol     bazos                 9                  2500.0              -140.0     medium                False
+         4  Toyota     Rav4   Hybrid autobazar                16                     1.0          -1699900.0     medium                False
+         4  Toyota     Rav4   Hybrid     bazos                13                   950.0             -1689.5     medium                False
+         6  Toyota    Auris   Hybrid autobazar                31                     1.0           -719900.0     medium                False
+         6  Toyota    Auris   Hybrid     bazos                11                   299.0             -2308.0     medium                False
+        21 Renault   Mégane     PHEV autobazar                26                     0.0                 NaN     medium                False
+        21 Renault   Mégane     PHEV     bazos                 4                    30.0            -38233.3        low                False
+        77      VW     ID.3 Electric autobazar                39                   125.0             -7100.0     medium                False
+        77      VW     ID.3 Electric     bazos                13                   499.0             -1703.6     medium                False
+        14     BMW       X1   Petrol autobazar                13                     1.0          -1149900.0     medium                False
+        14     BMW       X1   Petrol     bazos                10                   584.5             -1867.5     medium                False
+        57      VW   Passat   Diesel autobazar                10                     0.0                 NaN     medium                False
+        57      VW   Passat   Diesel     bazos                 9                   570.0               -57.9     medium                False

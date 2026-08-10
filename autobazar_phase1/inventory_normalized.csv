@@ -1,0 +1,99 @@
+row_index,brand,model,variant_raw,variant_engine,displacement_l,fuel,fuel_raw,year,power_kw,transmission,body_type,km,price,price_currency_assumed,vin,colour,availability,year_source,power_source
+0,Hyundai,I30,1.0 119HP Automatic Advanced,1.0,1.0,Petrol,Benzin,2023,88.0,Automatic,Estate,122000,11600,EUR,TMAH381BGNJ153297,Metallic,Immidiatly ready,registration_date[%m/%d/%Y],variant_HP->kW
+1,Nissan,X-Trail,1.3 157HP Automatic Acenta,1.3,1.3,Petrol,Benzin,2020,115.0,Automatic,SUV,80809,12950,EUR,JN1JGAT32U0051563,Brown,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+2,Mazda,Cx-5,2.0 163HP Manual Optimum,2.0,2.0,Petrol,Benzin,2020,120.0,Manual,SUV,100012,15950,EUR,JMZKF6W7600849116,Red,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+3,Honda,Jazz,1.3 101HP Manual Comfort,1.3,1.3,Petrol,Benzin,2017,74.0,Manual,Hatchback,84748,6000,EUR,JHMGK3750HX220455,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+4,Toyota,Rav4,2.5  Automatic H3 Selected,2.5,2.5,Hybrid,Hybrid,2019,,Automatic,SUV,93545,17000,EUR,JTMYRREV70D098986,Grey,Immidiatly ready,registration_date[%m/%d/%Y],missing
+5,Subaru,Impreza,2.0 154HP Automatic Active,2.0,2.0,Petrol,Benzin,2019,113.0,Automatic,Hatchback,66220,11000,EUR,JF1GT7LL5JG031475,Blue,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+6,Toyota,Auris,1.8 98HP Manual H2 Premium,1.8,1.8,Hybrid,Hybrid,2015,72.0,Manual,Hatchback,150000,7200,EUR,SB1MS3JE60E150094,White,Immidiatly ready,registration_date[%m/%d/%Y],variant_HP->kW
+7,Peugeot,2008,1.2 100HP Manual Allure,1.2,1.2,Petrol,Benzin,2024,74.0,Manual,SUV,42385,13400,EUR,VR3USHNKKRJ550704,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+8,Skoda,Karoq,1.5 148HP Automatic STYLE,1.5,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,112000,15000,EUR,TMBJR7NUXL5022139,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+9,Seat,Toledo,"1,2 TSI Style Start/Stop 110HK 5d 6g",1.2 TSI,1.2,Petrol,Petrol,2016,81.0,Manual,Hatchback,160000,4500,EUR,VSSZZZNHZH1006067,White,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+10,Volkswagen,Golf Sportsvan,1.5 130HP Automatic Comfortline,1.5,1.5,Petrol,Benzin,2018,96.0,Automatic,Hatchback,63910,13000,EUR,WVWZZZAUZJW691203,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+11,Skoda,Kamiq,1.0 109HP Automatic Dynamic,1.0,1.0,Petrol,Benzin,2021,80.0,Automatic,SUV,113100,12850,EUR,TMBGR7NW7M3066107,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+12,Skoda,Superb,1.5 148HP Automatic Business Executive,1.5,1.5,Petrol,Benzin,2019,109.0,Automatic,Estate,92386,16000,EUR,TMBJN7NP5L7010099,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+13,Nissan,Qashqai,1.3 156HP Automatic N-Connecta,1.3,1.3,Petrol,Benzin,2022,115.0,Automatic,SUV,79000,18500,EUR,SJNTAAJ12U1052042,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+14,BMW,X1,1.5 139HP Automatic sDrive 18i,1.5,1.5,Petrol,Benzin,2018,102.0,Automatic,SUV,119000,11500,EUR,WBAJG1105JED61717,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+15,Volkswagen,Passat,1.4 148HP Automatic Highline Premium,1.4,1.4,Petrol,Benzin,2017,109.0,Automatic,Estate,87000,10800,EUR,WVWZZZ3CZJE055282,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+16,Nissan,Qashqai,1.2 115HP Manual Visia,1.2,1.2,Petrol,Benzin,2018,85.0,Manual,SUV,118345,7000,EUR,SJNFEAJ11U2113785,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+17,Seat,Leon,1.6 109HP Automatic Stylance,1.6,1.6,Diesel,Diesel,2016,80.0,Automatic,Estate,213000,6000,EUR,VSSZZZ5FZGR064837,,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+18,Suzuki,Vitara,1.4 139HP Manual Active,1.4,1.4,Petrol,Benzin,2020,102.0,Manual,SUV,76000,13000,EUR,TSMLYDA1S00685163,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+19,Audi,Q3,1.4 tfsi 150HP man.,1.4 TFSI,1.4,Petrol,Petrol,2018,110.0,Manual,SUV,96000,10800,EUR,WAUZZZ8U2JR069081,Black,Immidiatly ready,registration_date[%d.%m.%Y],variant_HP->kW
+20,Mazda,3,2.0 skyactiv-g 122 hk 4-dørs man. sky,2.0 SKYACTIV-G,2.0,Petrol,Petrol,2019,90.0,Manual,Hatchback,116000,10250,EUR,JMZBP6SE601118448,Grey,Immidiatly ready,registration_date[%d.%m.%Y],variant_hk->kW
+21,Renault,Mégane,"Sport Tourer 1,6 E-TECH  Plugin-hybrid Zen 160HK Stc Aut.",1.6 E-TECH,1.6,PHEV,PHEV,2020,118.0,Automatic,Estate,99000,11500,EUR,VF1RFB00966826545,White,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+22,Opel,Insignia,"Sports Tourer 2,0 CDTI Edition Start/Stop 140HK Stc 6g",2.0 CDTI,2.0,Diesel,Diesel,2014,103.0,Manual,Estate,343000,2400,EUR,W0LGM8GS1E1135514,Bour,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+23,Toyota,Verso,"7 pers. 1,8 VVT-I T2 Premium 147HK 6g",1.8 VVT-I,1.8,Petrol,Petrol,2018,108.0,Manual,MPV,258000,7100,EUR,NMTDG26R00R109147,Grey,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+24,VW,Golf,"1,4 TSI  Plugin-hybrid GTE DSG 204HK 5d 6g Aut.",1.4 TSI,1.4,PHEV,PHEV,2018,150.0,Automatic,Hatchback,177000,9900,EUR,WVWZZZAUZJW812921,Grey,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+25,Mazda,Cx-5,"2,0 165 HK Sense AUT",2.0,2.0,Petrol,Petrol,2022,121.0,Automatic,SUV,54000,22300,EUR,JMZKF6W7A90267771,Blue,Immidiatly ready,registration_date[%d.%m.%Y],variant_HK->kW
+26,Skoda,Kodiaq,1.5 tsi 150 dsg7 7prs style,1.5 TSI,1.5,Petrol,Petrol,2019,,,SUV,189000,13600,EUR,TMBJB7NS9K8015750,White,1 week,registration_date[%d.%m.%Y],missing
+27,Suzuki,Vitara,"1,6 5-dørs aut.",1.6,1.6,Petrol,Petrol,2018,,Automatic,SUV,69000,12000,EUR,TSMLYD21S00403997,White,1 week,registration_date[%d.%m.%Y],missing
+28,Dacia,Duster,"1,5 DCi Ambiance 90HK 5d 6g",1.5 DCI,1.5,Diesel,Diesel,2014,66.0,Manual,SUV,280000,2300,EUR,UU1HSDCL650667703,Green,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+29,Nissan,Qashqai,"1,3 Dig-T 140 HK N-Connecta",1.3,1.3,Petrol,Petrol,2021,103.0,,SUV,66000,13000,EUR,SJNFFAJ11U2953576,Brown,Immidiatly ready,registration_date[%d.%m.%Y],variant_HK->kW
+30,Mazda,Cx-3,"2,0 SkyActiv-G 121 HK Optimum AUT",2.0 SKYACTIV-G,2.0,Petrol,Petrol,2019,89.0,Automatic,SUV,37000,15000,EUR,JMZDK6W7A01452312,Grey,1 Week,registration_date[%d.%m.%Y],variant_HK->kW
+31,Renault,Captur,"1,3 TCe 130 HK ZEN EDC aut",1.3 TCE,1.3,Petrol,Petrol,2020,96.0,Automatic,SUV,73000,12700,EUR,VF1RJB00664603471,Black,Immidiatly ready,registration_date[%d.%m.%Y],variant_HK->kW
+32,Toyota,Auris,1.8  Automatic H2 Comfort,1.8,1.8,Hybrid,Hybrid,2018,,Automatic,Estate,282000,7800,EUR,SB1ZS3JE60E469209,Red,1 week,registration_date[%m/%d/%Y],missing
+33,BMW,X3,2.0 249HP Automatic xDrive 30i,2.0,2.0,Petrol,Benzin,2019,183.0,Automatic,SUV,139900,20000,EUR,WBATR9108JLC57512,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+34,Skoda,Karoq,1.5 148HP Automatic Celebration,1.5,1.5,Petrol,Benzin,2021,109.0,Automatic,SUV,71700,18500,EUR,TMBJR7NU3MC205556,Blue,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+35,Volkswagen,Golf,1.5 148HP Automatic Comfortline,1.5,1.5,Petrol,Benzin,2019,109.0,Automatic,Estate,207000,7500,EUR,WVWZZZAUZKP556039,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+36,Nissan,Qashqai,1.2 114HP Manual Visia,1.2,1.2,Petrol,Benzin,2017,84.0,Manual,SUV,103480,6500,EUR,SJNFEAJ11U1972139,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+37,BMW,3 Series,2.0 182HP Automatic 320i M-sport,2.0,2.0,Petrol,Benzin,2019,134.0,Automatic,Estate,113000,13500,EUR,WBA8G3105KAH47265,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+38,Toyota,Auris,1.8  Automatic H4,1.8,1.8,Hybrid,Hybrid,2018,,Automatic,Estate,160000,10200,EUR,SB1ZS3JE30E460001,Blue,1 week,registration_date[%m/%d/%Y],missing
+39,Skoda,Octavia,2.0 148HP Automatic Style,2.0,2.0,Diesel,Diesel,2020,109.0,Automatic,Estate,209945,8800,EUR,TMBJJ9NE4L0094768,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+40,Mazda,Cx-3,2.0 119HP Manual Vision,2.0,2.0,Petrol,Benzin,2017,88.0,Manual,SUV,116949,10000,EUR,JMZDK6W7610180146,Red,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+41,Dacia,Duster,1.3 148HP Automatic Journey,1.3,1.3,Petrol,Benzin,2024,109.0,Automatic,SUV,24000,17600,EUR,VF1HJD20171704036,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+42,Peugeot,3008,1.6 179HP Automatic GT Line,1.6,1.6,Hybrid,Hybrid,2020,132.0,Automatic,SUV,73000,15000,EUR,VF3M4DGZULS112858,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+43,Mercedes,Gla-Class,1.6 154HP Automatic GLA 200,1.6,1.6,Petrol,Benzin,2017,113.0,Automatic,SUV,221000,9800,EUR,WDC1569431J410394,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+44,Nissan,Qashqai,1.2 114HP Manual Acenta,1.2,1.2,Petrol,Benzin,2016,84.0,Manual,SUV,110000,6400,EUR,SJNFEAJ11U1709184,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+45,Opel,Corsa,1.4 74HP Manual Enjoy,1.4,1.4,Petrol,Benzin,2016,54.0,Manual,Hatchback,94460,5600,EUR,W0L0XEP68G4017836,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+46,Mazda,Cx-5,2.5 192HP Automatic Optimum AWD,2.5,2.5,Petrol,Benzin,2018,141.0,Automatic,SUV,137043,16000,EUR,JMZKFGWMA00672011,Brown,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+47,Fiat,500X,1.0 119HP Manual Cross,1.0,1.0,Petrol,Benzin,2018,88.0,Manual,SUV,141619,6500,EUR,ZFA3340000P727216,Green,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+48,Skoda,Kamiq,1.0 109HP Manual Tour de France,1.0,1.0,Petrol,Benzin,2022,80.0,Manual,SUV,88400,12500,EUR,TMBGR7NW7N3041922,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+49,Audi,A5,1.8 143HP Automatic S-Line,1.8,1.8,Petrol,Benzin,2016,105.0,Automatic,Hatchback,219500,7500,EUR,WAUZZZ8T8GA064644,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+50,Ford,S-Max,1.5 159HP Manual Titanium,1.5,1.5,Petrol,Benzin,2017,117.0,Manual,MPV,330000,3800,EUR,WF0JXXWPCJGL30745,Black,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+51,Mercedes,B-Class,1.6 121HP Manual B 180,1.6,1.6,Petrol,Benzin,2015,89.0,Manual,Hatchback,161000,6800,EUR,WDD2462421J326011,Red,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+52,Mazda,Cx-5,2.0 163HP Automatic Sky,2.0,2.0,Petrol,Benzin,2021,120.0,Automatic,SUV,37500,20500,EUR,JMZKFGW7A90168489,White,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+53,Audi,Q2,1.5 148HP Automatic 35 TFSI,1.5 TFSI,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,158266,12000,EUR,WAUZZZGA8LA033680,Grey,1 week,registration_date[%m/%d/%Y],variant_HP->kW
+54,Citroen,C3,"1,2 PureTech Le Mans 83HK 5d",1.2,1.2,Petrol,Petrol,2021,61.0,,Hatchback,73000,7000,EUR,VF7SXHMRVMT516872,Grey,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+55,VW,Polo,"1,4 TDI BMT Highline 90HK 5d",1.4 TDI,1.4,Diesel,Diesel,2014,66.0,,Hatchback,280000,2300,EUR,WVWZZZ6RZFY064440,Black,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+56,Skoda,Fabia,"1,0 TSI Ambition 95HK 5d",1.0 TSI,1.0,Petrol,Petrol,2018,70.0,,Hatchback,92000,6300,EUR,TMBEP6NJ4JZ160398,Silver,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+57,VW,Passat,"2,0 TDI DSG 140HK 6g Aut.",2.0 TDI,2.0,Diesel,Diesel,2006,103.0,Automatic,Estate,386000,900,EUR,WVWZZZ3CZ7E061625,Metallic,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+58,Peugeot,2008,"1,2 VTi Allure 82HK",1.2,1.2,Petrol,Petrol,2014,60.0,,SUV,180000,2500,EUR,VF3CUHMZ0EY022241,White,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+59,Opel,Astra,"1,0 Turbo Enjoy 105HK 5d",1.0,1.0,Petrol,Petrol,2017,77.0,,Hatchback,179000,3200,EUR,W0VBD6EA3JG028150,Black,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+60,Suzuki,Vitara,"1,0 boosterjet 5-dørs Active",1.0,1.0,Petrol,Petrol,2019,,,SUV,72000,11700,EUR,TSMLYD01S00635957,Grey,1 week,registration_date[%d.%m.%Y],missing
+61,Kia,Sportage,"1,6 CRDI 136 HK Intro Edition DCT aut",1.6 CRDI,1.6,Diesel,Diesel,2019,100.0,Automatic,SUV,141000,11800,EUR,U5YPH812GKL665707,Black,1 week,registration_date[%d.%m.%Y],variant_HK->kW
+62,Nissan,Qashqai,1.6 130HP Automatic Acenta,1.6,1.6,Diesel,Diesel,2015,96.0,Automatic,SUV,159000,7000,EUR,SJNFDAJ11U1072299,Grey,1 week,registration_date[%d.%m.%Y],variant_HP->kW
+63,Opel,Zafira,1.4 139HP Automatic Enjoy,1.4,1.4,Petrol,Benzin,2016,102.0,Automatic,MPV,124000,7200,EUR,W0LPD9EC4G1076267,Grey,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+64,Suzuki,Vitara,"1,4 129HP Manuel Adventure",1.4,1.4,Petrol,Benzin,2023,95.0,,SUV,83000,15500,EUR,TSMLYDD1S00B21132,Silver,2 Weeks,registration_date[%m/%d/%Y],variant_HP->kW
+65,Renault,Captur,0.9 89HP Manual TCe,0.9 TCE,0.9,Petrol,Benzin,2017,65.0,Manual,Hatchback,140312,5500,EUR,VF12RA11A56600776,Orange,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+66,Volkswagen,T-Cross,1.0 115HP Manual -,1.0,1.0,Petrol,Benzin,2019,85.0,Manual,SUV,89309,11300,EUR,WVGZZZC1ZKY004909,White,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+67,Opel,Astra,1.4 148HP Automatic Innovation,1.4,1.4,Petrol,Benzin,2016,109.0,Automatic,Estate,122600,6500,EUR,W0LBE8EC0H8008705,Grey,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+68,Volkswagen,Tiguan,1.5 148HP Automatic Life,1.5,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,143353,17000,EUR,WVGZZZ5NZMW037974,Black,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+69,Skoda,Karoq,1.5 148HP Automatic STYLE Pano,1.5,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,115000,16000,EUR,TMBJR7NUXL5034663,Grey,2 Weeks,registration_date[%Y-%m-%d],variant_HP->kW
+70,Suzuki,Vitara,1.4 128HP Manual Active,1.4,1.4,Petrol,Benzin,2021,94.0,Manual,SUV,79000,13000,EUR,TSMLYDD1S00906162,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+71,Toyota,Corolla,1.8  Automatic H3,1.8,1.8,Hybrid,Hybrid,2019,,Automatic,Hatchback,49000,16300,EUR,SB1K93BE20E039592,Red,2 weeks,registration_date[%Y-%m-%d],missing
+72,Mazda,Cx-5,2.0 163HP Manual Optimum,2.0,2.0,Petrol,Benzin,2018,120.0,Manual,SUV,137000,14200,EUR,JMZKF6W7600647014,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+73,BMW,3 Series,2.0 182HP Automatic 320i,2.0,2.0,Petrol,Benzin,2019,134.0,Automatic,Estate,115000,14000,EUR,WBA8G3106KAH49896,Blue,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+74,BMW,318d,"Touring 2,0 D 143HK Stc 6g",2.0,2.0,Diesel,Diesel,2009,105.0,Manual,Estate,388000,1600,EUR,WBAUX11090A632536,White,2 weeks,registration_date[%d.%m.%Y],variant_HK->kW
+75,Renault,Austral,Mhev 160 auto,MHEV,,Petrol,Petrol,2024,,,SUV,65000,21500,EUR,VF1RHN00171625717,red,2 weeks,registration_date[%d.%m.%Y],missing
+76,Suzuki,Vitara,"1,0 Boosterjet Active manuel,",1.0,1.0,Petrol,Petrol,2019,,,SUV,48000,11900,EUR,TSMLYD01S00633778,Black,2 weeks,registration_date[%d.%m.%Y],missing
+77,VW,ID.3,EL Life 204HK 5d Aut,,,Electric,Electric,2021,150.0,Automatic,Hatchback,213000,9000,EUR,WVWZZZE1ZMP049510,Silver,Immidiatly ready,registration_date[%d.%m.%Y],variant_HK->kW
+78,BMW,2 Series,1.5 108HP Manual 216i,1.5,1.5,Petrol,Benzin,2020,79.0,Manual,MPV,125000,9000,EUR,WBA6V110605R95786,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+79,Mazda,Cx-5,2.0 163HP Manual Optimum,2.0,2.0,Petrol,Benzin,2019,120.0,Manual,SUV,159000,14800,EUR,JMZKF6W7600762986,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+80,Volkswagen,Touran,1.4 148HP Automatic Comfortline,1.4,1.4,Petrol,Benzin,2018,109.0,Automatic,MPV,146600,12200,EUR,WVGZZZ1TZJW074949,Blue,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+81,Volkswagen,Tiguan,1.5 148HP Automatic Life,1.5,1.5,Petrol,Benzin,2022,109.0,Automatic,SUV,87000,22700,EUR,WVGZZZ5NZNW065514,Grey,2 weeks,registration_date[%m/%d/%Y],variant_HP->kW
+82,Volkswagen,Passat,1.4 148HP Automatic Highline,1.4,1.4,Petrol,Benzin,2018,109.0,Automatic,Estate,254100,8500,EUR,WVWZZZ3CZJE203166,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+83,Toyota,Corolla,1.8  Automatic H3 Smart,1.8,1.8,Hybrid,Hybrid,2021,,Automatic,Estate,141000,15500,EUR,SB1Z93BE90E170341,Brown,2 weeks,registration_date[%Y-%m-%d],missing
+84,Suzuki,S-Cross,1.5 101HP Automatic Adventure,1.5,1.5,Hybrid,Hybrid,2024,74.0,Automatic,SUV,22550,22000,EUR,TSMJYAH2S00A58841,Silver,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+85,Volkswagen,Golf,1.5 148HP Automatic Highline,1.5,1.5,Petrol,Benzin,2019,109.0,Automatic,Estate,110457,12500,EUR,WVWZZZAUZKP566759,Blue,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+86,Mazda,Cx-3,2.0 120HP Automatic Optimum,2.0,2.0,Petrol,Benzin,2018,88.0,Automatic,SUV,152350,11000,EUR,JMZDK6W7A00403878,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+87,Mercedes,A-Class,1.6 155HP Automatic A 200,1.6,1.6,Petrol,Benzin,2017,114.0,Automatic,Hatchback,154000,9500,EUR,WDD1760431J582004,Black,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+88,Mazda,Cx-5,2.0 163HP Manual Vision,2.0,2.0,Petrol,Benzin,2014,120.0,Manual,SUV,172000,9500,EUR,JMZKEC97600266705,White,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+89,Nissan,Qashqai,1.3 139HP Manual Visia,1.3,1.3,Petrol,Benzin,2021,102.0,Manual,SUV,27845,13500,EUR,SJNFFAJ11U2888003,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+90,Volkswagen,Tiguan,1.5 148HP Automatic Life,1.5,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,122500,19000,EUR,WVGZZZ5NZMW003862,Black,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+91,Skoda,Karoq,1.5 148HP Automatic STYLE,1.5,1.5,Petrol,Benzin,2019,109.0,Automatic,SUV,41000,19500,EUR,TMBJR7NU1L5018058,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+92,Audi,Q3,2.0 148HP Automatic Sport,2.0,2.0,Diesel,Diesel,2018,109.0,Automatic,SUV,147000,13000,EUR,WAUZZZ8U7JR044306,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+93,Kia,Xceed,1.6 104HP Automatic ADVANCE PLUS,1.6,1.6,Hybrid,Hybrid,2021,76.0,Automatic,SUV,115068,15000,EUR,U5YH5F1AGML014441,Yellow,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+94,Toyota,C-Hr,1.8  Automatic C-LUB,1.8,1.8,Hybrid,Hybrid,2019,,Automatic,SUV,36157,18200,EUR,NMTKZ3BX40R232851,Grey,2 weeks,registration_date[%Y-%m-%d],missing
+95,Toyota,C-Hr,1.8  Automatic Selected,1.8,1.8,Hybrid,Hybrid,2019,,Automatic,SUV,97548,16200,EUR,NMTKZ3BX20R227020,Grey,2 weeks,registration_date[%Y-%m-%d],missing
+96,Skoda,Octavia,1.5 148HP Automatic Style,1.5,1.5,Petrol,Benzin,2019,109.0,Automatic,Estate,113000,12500,EUR,TMBJR9NE1L0061798,Black,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
+97,Seat,Ateca,1.5 148HP Automatic FR,1.5,1.5,Petrol,Benzin,2020,109.0,Automatic,SUV,130000,16750,EUR,VSSZZZ5FZL6542808,Grey,2 weeks,registration_date[%Y-%m-%d],variant_HP->kW
