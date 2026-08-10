@@ -341,11 +341,37 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
     return passed, outcomes
 
 
-def match(car: InvCar, df: pd.DataFrame, rules: RuleSet) -> pd.DataFrame:
+def qualifies_as_vehicle(row) -> bool:
+    """
+    Candidate-qualification gate applied BEFORE tolerance rules.
+
+    Keyword search returns spare-parts/accessory ads that carry the brand token
+    in their title but are not cars (no year/km/fuel, EUR 0-2). Those otherwise
+    pass STRICT because the tolerance rules treat missing fields as `unknown`
+    (which never fails) - and they wreck the median. A real listing must:
+      * have a plausible price (>= VEHICLE_PRICE_FLOOR), and
+      * expose at least one vehicle attribute (year OR mileage).
+    This keeps even very cheap genuine cars (e.g. a 2006 Passat ~EUR 900) while
+    dropping parts. It is deliberately NOT a tolerance rule, so the
+    "unknown never fails" principle is preserved for real vehicles.
+    """
+    price = _int(row.get("price"))
+    if price is None or price < VEHICLE_PRICE_FLOOR:
+        return False
+    has_year = _int(row.get("year")) is not None
+    has_km = _int(row.get("km")) is not None
+    return has_year or has_km
+
+
+def match(car: InvCar, df: pd.DataFrame, rules: RuleSet) -> tuple[pd.DataFrame, int]:
+    """Return (matched_rows, n_disqualified_nonvehicles)."""
     if df.empty:
-        return df.copy()
-    keep, trails = [], []
+        return df.copy(), 0
+    keep, trails, disq = [], [], 0
     for idx, row in df.iterrows():
+        if not qualifies_as_vehicle(row):
+            disq += 1
+            continue
         ok, outcomes = evaluate(car, row, rules)
         if ok:
             keep.append(idx)
@@ -353,7 +379,7 @@ def match(car: InvCar, df: pd.DataFrame, rules: RuleSet) -> pd.DataFrame:
     out = df.loc[keep].copy().reset_index(drop=True)
     for f in ["brand", "model", "fuel", "variant", "year", "km", "power", "transmission"]:
         out[f"rule_{f}"] = [t[f] for t in trails]
-    return out
+    return out, disq
 
 
 # --------------------------------------------------------------------------- #
@@ -456,15 +482,21 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
         print(f"  Bazos    : {len(bz_df)} listings"
               + (f"  [{bz_err}]" if bz_err else ""))
 
-        groups = {
-            "autobazar_strict": match(car, ab_df, STRICT),
-            "autobazar_broad": match(car, ab_df, BROAD),
-            "bazos_strict": match(car, bz_df, STRICT),
-            "bazos_broad": match(car, bz_df, BROAD),
-        }
+        groups, disq = {}, {}
+        for name, src_df, ruleset in (
+            ("autobazar_strict", ab_df, STRICT),
+            ("autobazar_broad", ab_df, BROAD),
+            ("bazos_strict", bz_df, STRICT),
+            ("bazos_broad", bz_df, BROAD),
+        ):
+            groups[name], disq[name] = match(car, src_df, ruleset)
         for name, g in groups.items():
             if not g.empty:
                 g.to_csv(f"{out_dir}/car{car.row_index}_{name}.csv", index=False)
+
+        n_parts = disq["autobazar_broad"] + disq["bazos_broad"]
+        if n_parts:
+            print(f"  filtered {n_parts} non-vehicle/parts listing(s) before matching")
 
         # Combined strict pool (both sources, still reported separately below)
         ab_est = estimate(car, groups["autobazar_strict"])
