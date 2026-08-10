@@ -1,0 +1,4 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+bazos,194004541,Toyota Rav4,,,,108750.0,,,,5350.0,https://auto.bazos.sk/inzerat/194004541/toyota-rav4.php,match,match,unknown,unknown,unknown,match,n/a,unknown
+bazos,193577804,Toyota RAV4 2.5Hybrid AWD Executive 4x4 Top stav,,Hybrid,2019.0,112000.0,163.0,Automatic,,26900.0,https://auto.bazos.sk/inzerat/193577804/toyota-rav4-25hybrid-awd-executive-4x4-top-stav.php,match,match,match,unknown,match,match,n/a,match
+bazos,194442848,Predam kompletny motor TOYOTA 1AD-FTV s najazdom 108.000km,,,,108000.0,91.0,,,2500.0,https://auto.bazos.sk/inzerat/194442848/predam-kompletny-motor-toyota-1ad-ftv-s-najazdom-108000km.php,match,unknown,unknown,unknown,unknown,match,n/a,unknown

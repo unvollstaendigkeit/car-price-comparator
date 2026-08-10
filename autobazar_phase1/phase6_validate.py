@@ -64,6 +64,22 @@ _BRAND_ALIASES = {
     "citroen": {"citroen", "citroën"},
 }
 
+# --- Autobazar category-path slug mapping (verified against the live site) --- #
+# The inventory uses short/Danish brand names; Autobazar's SEF path uses full
+# slugs. Confirmed by probing brandSef in the site's embedded searchQuery.
+_BRAND_SLUG = {
+    "vw": "volkswagen",
+    "mercedes": "mercedes-benz",
+    "merc": "mercedes-benz",
+}
+# Model-slug quirks where the generic slugify is wrong. Confirmed live:
+# VW "ID.3" -> generic 'id-3' 404s; the real modelSef is 'id3'.
+_MODEL_SLUG = {
+    ("volkswagen", "id.3"): "id3",
+    ("volkswagen", "id.4"): "id4",
+    ("volkswagen", "id.5"): "id5",
+}
+
 
 # --------------------------------------------------------------------------- #
 # Inventory car (superset of Phase 5 InventoryCar with extra display fields)
@@ -202,27 +218,71 @@ def _norm_market_row(source: str, raw: dict) -> dict:
     }
 
 
-def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
-    keyword = f"{car.brand} {car.model}"
+def _ab_slugs(car: InvCar) -> tuple[str, str]:
+    """Map an inventory brand/model to Autobazar category-path SEF slugs."""
+    brand_key = car.brand.strip().lower()
+    brand_slug = _BRAND_SLUG.get(brand_key, ab._slugify(car.brand))
+    model_slug = _MODEL_SLUG.get(
+        (brand_slug, car.model.strip().lower()), ab._slugify(car.model)
+    )
+    return brand_slug, model_slug
+
+
+def _fetch_ab_pages(url_for_page, max_pages: int, delay: float) -> list[dict]:
     rows: list[dict] = []
+    for page in range(1, max_pages + 1):
+        html = ab.fetch(url_for_page(page))  # raises BlockedError -> caller handles
+        listings, _mode = ab.parse_listings(html)
+        if not listings:
+            break
+        rows.extend(_norm_market_row("autobazar", r) for r in listings)
+        if page < max_pages:
+            time.sleep(delay)
+    return rows
+
+
+def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
+    """
+    Retrieve Autobazar candidates via the CATEGORY PATH
+    (/vysledky/osobne-vozidla/{brand}/{model}/), which is a genuine server-side
+    brand+model filter and is far cleaner than keyword search (Phase 2B finding:
+    near-zero spare-parts noise).
+
+    Resilience: if the category slug 404s (an unmapped model-name quirk), we fall
+    back to the keyword search for that one car so it never silently returns zero.
+    The mode actually used is reported back to the caller for the log.
+    """
+    brand_slug, model_slug = _ab_slugs(car)
+
+    def cat_url(page: int) -> str:
+        base = f"{ab.BASE}/vysledky/osobne-vozidla/{brand_slug}/{model_slug}/"
+        return base if page <= 1 else f"{base}?page={page}"
+
+    note: Optional[str] = None
     try:
-        for page in range(1, max_pages + 1):
-            url = ab.build_search_url(keyword=keyword, page=page)
-            html = ab.fetch(url)
-            listings, _mode = ab.parse_listings(html)
-            if not listings:
-                break
-            rows.extend(_norm_market_row("autobazar", r) for r in listings)
-            if page < max_pages:
-                time.sleep(delay)
+        rows = _fetch_ab_pages(cat_url, max_pages, delay)
     except ab.BlockedError as e:
-        return pd.DataFrame(rows), f"BLOCKED: {e}"
+        # 404 = wrong slug -> keyword fallback; anything else is a real stop.
+        if "HTTP 404" not in str(e):
+            return pd.DataFrame(), f"BLOCKED: {e}"
+        note = f"category slug {brand_slug}/{model_slug} 404 -> keyword fallback"
+        time.sleep(delay)
+        keyword = f"{car.brand} {car.model}"
+        try:
+            rows = _fetch_ab_pages(
+                lambda p: ab.build_search_url(keyword=keyword, page=p), max_pages, delay
+            )
+        except ab.BlockedError as e2:
+            return pd.DataFrame(), f"BLOCKED (fallback): {e2}"
+        except Exception as e2:  # noqa: BLE001
+            return pd.DataFrame(), f"ERROR (fallback): {type(e2).__name__}: {e2}"
     except Exception as e:  # noqa: BLE001 - surface, never hide
-        return pd.DataFrame(rows), f"ERROR: {type(e).__name__}: {e}"
+        return pd.DataFrame(), f"ERROR: {type(e).__name__}: {e}"
+
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.drop_duplicates(subset="url").reset_index(drop=True)
-    return df, None
+    return df, note
 
 
 def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
@@ -463,7 +523,7 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
     print(f"\nSTRICT: {STRICT.describe()}")
     print(f"BROAD : {BROAD.describe()}")
     print("\nNOTE: prices assumed EUR on BOTH sides (inventory currency UNCONFIRMED).")
-    print("Retrieval: keyword search, "
+    print("Retrieval: Autobazar CATEGORY PATH (keyword fallback on 404) + Bazos keyword, "
           f"{max_pages} page(s)/source, {delay}s delay. Sources never merged.\n")
 
     summary_rows = []

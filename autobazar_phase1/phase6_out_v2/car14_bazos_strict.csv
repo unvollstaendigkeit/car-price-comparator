@@ -1,0 +1,3 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+bazos,194137635,BMW X1,,,2018.0,,110.0,,SUV,14990.0,https://auto.bazos.sk/inzerat/194137635/bmw-x1.php,match,match,unknown,unknown,match,unknown,match,unknown
+bazos,194316389,BMW X1 sDrive 18i 140k xLine AT 103kW140HP A6,,Petrol,2017.0,122286.0,103.0,Automatic,SUV,15100.0,https://auto.bazos.sk/inzerat/194316389/bmw-x1-sdrive-18i-140k-xline-at-103kw140hp-a6.php,match,match,match,unknown,match,match,match,match

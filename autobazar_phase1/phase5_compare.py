@@ -73,10 +73,15 @@ class RuleSet:
     power_tol_kw: Optional[int]   # +/- kW when both known; None = ignore power
     require_same_variant: bool    # engine/variant must match (displacement+family)
     require_same_transmission: bool
+    # When True, a listing with UNKNOWN year is rejected (not treated as a pass).
+    # STRICT sets this: you cannot call something a tight +/-1-year comparable if
+    # its year is unknown. Without it, year-less part/older listings slip into the
+    # strict pool purely because "unknown never fails" and corrupt the median.
+    require_known_year: bool = False
 
     def describe(self) -> str:
         parts = [
-            f"year +/-{self.year_tol}",
+            f"year +/-{self.year_tol}" + (" (must be known)" if self.require_known_year else ""),
             f"km +/-{int(self.km_pct*100)}% (floor +/-{self.km_floor:,})",
             ("variant must match" if self.require_same_variant else "any engine of model"),
             (f"power +/-{self.power_tol_kw}kW (both-known)" if self.power_tol_kw is not None else "power ignored"),
@@ -93,6 +98,7 @@ STRICT = RuleSet(
     power_tol_kw=10,
     require_same_variant=True,
     require_same_transmission=True,
+    require_known_year=True,
 )
 
 BROAD = RuleSet(
@@ -156,17 +162,41 @@ def normalize_transmission(text) -> Optional[str]:
 
 
 def normalize_fuel(text) -> Optional[str]:
+    """
+    Canonicalize a fuel string from either source or the inventory into one of:
+    Diesel, Petrol, Hybrid, PHEV, Electric, LPG, CNG (else Title-cased original).
+
+    Keyword/substring based with deliberate PRECEDENCE, because the sources use
+    Slovak and compound labels ('Elektromotor', 'Plug-in Hybrid',
+    'Hybridný (benzín/elektro)'), and exact-match would misfile them:
+      1. plug-in  -> PHEV   (before generic 'hybrid')
+      2. hybrid   -> Hybrid (before 'elektro', since a hybrid mentions elektro)
+      3. elektro/electric -> Electric
+    """
     text = _clean(text)
     if not text:
         return None
     t = str(text).strip().lower()
-    mapping = {
-        "diesel": "Diesel", "nafta": "Diesel",
-        "benzín": "Petrol", "benzin": "Petrol", "petrol": "Petrol",
-        "hybrid": "Hybrid", "elektro": "Electric", "electric": "Electric",
-        "lpg": "LPG", "cng": "CNG", "phev": "PHEV",
-    }
-    return mapping.get(t, str(text).strip().title())
+
+    # 1. Plug-in hybrid first (contains both 'hybrid' and often 'elektro').
+    if "plug" in t or "phev" in t or "plug-in" in t:
+        return "PHEV"
+    # 2. Any remaining hybrid (may read 'benzín/elektro' -> still Hybrid).
+    if "hybrid" in t:
+        return "Hybrid"
+    # 3. Pure electric.
+    if "elektro" in t or "electric" in t or t == "ev":
+        return "Electric"
+    # 4. Single-fuel keywords.
+    if "diesel" in t or "nafta" in t:
+        return "Diesel"
+    if "benzín" in t or "benzin" in t or "petrol" in t:
+        return "Petrol"
+    if "lpg" in t:
+        return "LPG"
+    if "cng" in t:
+        return "CNG"
+    return str(text).strip().title()
 
 
 def _listing_id_from_url(url) -> Optional[str]:
