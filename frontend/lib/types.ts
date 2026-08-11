@@ -260,6 +260,11 @@ export interface AnalysisSummary {
   }
   market_lookups: number
   disabled_sources: string[]
+  /** Per-source soft timeouts (deadline overruns) and hard block/errors. */
+  timeouts?: Record<string, number>
+  errors?: Record<string, number>
+  timeouts_total?: number
+  errors_total?: number
   ranked: AnalysisCarResult[]
   benchmark?: {
     total_cars: number
@@ -267,10 +272,14 @@ export interface AnalysisSummary {
     cached_groups: number
     cache_hits: number
     http_requests: number
+    http_requests_measured?: number
     market_lookups: number
     retrieval_time_s: number
     eval_time_s: number
     total_time_s: number
+    avg_http_time_s?: number
+    timeouts_total?: number
+    errors_total?: number
     mode: string
   }
 }
@@ -306,6 +315,16 @@ export type AnalysisEvent =
       bz_from_cache: boolean
       ab_age_s: number | null
       bz_age_s: number | null
+      ab_timed_out: boolean
+      bz_timed_out: boolean
+    }
+  | {
+      stage: 'source_timeout'
+      source: string
+      brand: string
+      model: string
+      kept: number
+      reason: string
     }
   | { stage: 'source_disabled'; source: string; reason: string }
   | { stage: 'car_done'; analyzed: number; total: number; car: AnalysisCarResult }

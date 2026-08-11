@@ -408,6 +408,7 @@ interface Progress {
   currentModel: string
   cached: boolean
   lookups: number
+  timeouts: number
 }
 
 interface CacheLogEntry {
@@ -417,6 +418,13 @@ interface CacheLogEntry {
 }
 
 /** Human-readable age of a cached pool, e.g. "just now", "3h old", "2d old". */
+function fmtSecs(s: number): string {
+  if (s < 1) return `${Math.round(s * 1000)}ms`
+  if (s < 60) return `${s.toFixed(1)}s`
+  const m = Math.floor(s / 60)
+  return `${m}m ${Math.round(s % 60)}s`
+}
+
 function formatAge(ageS: number | null): string {
   if (ageS == null) return ""
   if (ageS < 90) return "just now"
@@ -450,6 +458,7 @@ function AnalysisPanel({
     currentModel: "",
     cached: false,
     lookups: 0,
+    timeouts: 0,
   })
   const [results, setResults] = useState<AnalysisCarResult[]>([])
   const [summary, setSummary] = useState<AnalysisSummary | null>(null)
@@ -483,6 +492,13 @@ function AnalysisPanel({
               lookups,
             }))
             setCacheLog((log) => [...log, { model: `${e.brand} ${e.model}`, cached: e.cached, ageS }])
+            break
+          }
+          case "source_timeout": {
+            const src = e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"
+            const kept = e.kept > 0 ? ` (kept ${e.kept} partial listing${e.kept === 1 ? "" : "s"})` : ""
+            setNotices((n) => [...n, `${src} timed out on ${e.brand} ${e.model} — continuing${kept}.`])
+            setProgress((p) => ({ ...p, timeouts: p.timeouts + 1 }))
             break
           }
           case "source_disabled":
@@ -603,18 +619,53 @@ function AnalysisPanel({
             <span className="text-faint">
               {cachedModels} cached · {liveModels} live · {progress.lookups} live lookups
             </span>
+            {progress.timeouts > 0 && (
+              <span className="flex items-center gap-1.5 text-caution">
+                <span className="block h-1.5 w-1.5 rounded-full bg-caution" aria-hidden />
+                {progress.timeouts} timeout{progress.timeouts === 1 ? "" : "s"} — continuing
+              </span>
+            )}
           </div>
         )}
 
         {summary && (
-          <div className="flex flex-wrap gap-2">
-            <SummaryStat label="High" value={summary.counts.high} tone="positive" />
-            <SummaryStat label="Medium" value={summary.counts.medium} tone="accent" />
-            <SummaryStat label="Low" value={summary.counts.low} tone="caution" />
-            <SummaryStat label="Insufficient" value={summary.counts.insufficient} tone="muted" />
-            <SummaryStat label="Live requests" value={summary.benchmark?.http_requests ?? summary.market_lookups} tone="muted" />
-            {summary.benchmark && summary.benchmark.cached_groups > 0 && (
-              <SummaryStat label="Models from cache" value={summary.benchmark.cached_groups} tone="positive" />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <SummaryStat label="High" value={summary.counts.high} tone="positive" />
+              <SummaryStat label="Medium" value={summary.counts.medium} tone="accent" />
+              <SummaryStat label="Low" value={summary.counts.low} tone="caution" />
+              <SummaryStat label="Insufficient" value={summary.counts.insufficient} tone="muted" />
+              <SummaryStat label="Live requests" value={summary.benchmark?.http_requests ?? summary.market_lookups} tone="muted" />
+              {summary.benchmark && summary.benchmark.cached_groups > 0 && (
+                <SummaryStat label="Models from cache" value={summary.benchmark.cached_groups} tone="positive" />
+              )}
+              {(summary.timeouts_total ?? 0) > 0 && (
+                <SummaryStat label="Timeouts (continued)" value={summary.timeouts_total ?? 0} tone="caution" />
+              )}
+              {(summary.errors_total ?? 0) > 0 && (
+                <SummaryStat label="Source errors" value={summary.errors_total ?? 0} tone="caution" />
+              )}
+            </div>
+
+            {/* Timing breakdown: proves retrieval (network) dominates runtime,
+                while valuation is effectively instant. */}
+            {summary.benchmark && (
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
+                <span>
+                  Total <span className="text-muted">{fmtSecs(summary.benchmark.total_time_s)}</span>
+                </span>
+                <span aria-hidden>·</span>
+                <span>
+                  Retrieval <span className="text-muted">{fmtSecs(summary.benchmark.retrieval_time_s)}</span>
+                  {summary.benchmark.avg_http_time_s
+                    ? ` (${fmtSecs(summary.benchmark.avg_http_time_s)}/req)`
+                    : ""}
+                </span>
+                <span aria-hidden>·</span>
+                <span>
+                  Valuation <span className="text-muted">{fmtSecs(summary.benchmark.eval_time_s)}</span>
+                </span>
+              </p>
             )}
           </div>
         )}
