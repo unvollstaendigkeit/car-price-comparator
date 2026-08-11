@@ -29,14 +29,16 @@ yields plain event dicts. `main.py` wraps them as SSE.
 """
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from typing import Iterator, Optional
 
 import pandas as pd
 
-from phase6_validate import MIN_USABLE, retrieve_autobazar, retrieve_bazos
+from phase6_validate import MIN_USABLE
 from single_car import SingleCarInput, build_canonical_car
 from phase7_fullrun import evaluate_car
+from market_provider import LiveMarketProvider
 
 # --- tunables (confirmed defaults) --------------------------------------- #
 START_PAGES = 1          # pages/source fetched on first touch of a model
@@ -125,6 +127,7 @@ def analyze_inventory(
     start_pages: int = START_PAGES,
     max_pages: int = MAX_PAGES,
     block_limit: int = BLOCK_LIMIT,
+    provider=None,
 ) -> Iterator[dict]:
     """
     Analyze a confirmed inventory. Yields event dicts:
@@ -133,7 +136,14 @@ def analyze_inventory(
 
     Grouping by (brand, model) means marketplace lookups scale with the number
     of UNIQUE models, not the number of cars.
+
+    `provider` is the market-data transport (see market_provider.py). It
+    defaults to a LiveMarketProvider (real, polite retrieval) so existing
+    callers are unchanged. Pass a CachedMarketProvider for a zero-HTTP run.
+    The summary event carries benchmark timings (retrieval vs. valuation).
     """
+    if provider is None:
+        provider = LiveMarketProvider(delay=delay)
     # Parse + group, preserving first-seen order for orderly progress.
     groups: "OrderedDict[tuple, list[tuple[int, int, SingleCarInput]]]" = OrderedDict()
     total_cars = 0
@@ -157,26 +167,40 @@ def analyze_inventory(
     cache: dict[tuple, dict] = {}
     consec_blocks = {"autobazar": 0, "bazos": 0}
     disabled: set[str] = set()
-    market_lookups = 0
+    market_lookups = 0          # provider.retrieve calls (both modes)
+    http_requests = 0           # real network requests (0 in cache-only mode)
+    retrieval_time_s = 0.0      # wall time spent in provider.retrieve
+    eval_time_s = 0.0           # wall time spent in evaluate_car (pure valuation)
+    cached_groups = 0           # groups served with 0 HTTP (from saved data)
+    run_t0 = time.perf_counter()
 
     results: list[dict] = []
     flag_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "INSUFFICIENT": 0}
     analyzed = 0
 
     def fetch(source: str, car, pages: int):
-        """One retrieval for a source, honoring the circuit breaker. Returns (df, err)."""
-        nonlocal market_lookups
+        """One retrieval via the provider, honoring the circuit breaker. Returns (df, err)."""
+        nonlocal market_lookups, http_requests, retrieval_time_s
         if source in disabled:
             return pd.DataFrame(), "DISABLED: source disabled after repeated blocks"
-        fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
-        df, err = fn(car, pages, delay)
-        err = err or ""
+        res = provider.retrieve(source, car, pages)
+        err = res.err or ""
         market_lookups += 1
+        http_requests += res.http_requests
+        retrieval_time_s += res.elapsed_s
         if _is_block(err):
             consec_blocks[source] += 1
         else:
             consec_blocks[source] = 0
-        return df, err
+        return res.df, err
+
+    def timed_evaluate(car, ab_df, bz_df, ab_err, bz_err):
+        """Wrap evaluate_car to accumulate pure valuation time."""
+        nonlocal eval_time_s
+        t0 = time.perf_counter()
+        out = evaluate_car(car, ab_df, bz_df, ab_err, bz_err)
+        eval_time_s += time.perf_counter() - t0
+        return out
 
     for gi, (key, members) in enumerate(groups.items(), 1):
         # A representative car drives retrieval (query = brand+model only, so any
@@ -197,8 +221,11 @@ def analyze_inventory(
         newly_disabled: list[str] = []
 
         if not cached:
+            http_before = http_requests
             ab_df, ab_err = fetch("autobazar", rep_car, start_pages)
             bz_df, bz_err = fetch("bazos", rep_car, start_pages)
+            if http_requests == http_before:
+                cached_groups += 1  # served entirely from saved data (0 HTTP)
             entry = {
                 "ab_df": ab_df, "ab_err": ab_err, "ab_depth": start_pages,
                 "bz_df": bz_df, "bz_err": bz_err, "bz_depth": start_pages,
@@ -229,7 +256,7 @@ def analyze_inventory(
 
         for (row_index, row_number, inp) in members:
             car = build_canonical_car(inp, row_index=row_index)
-            engine_row, ab_est, bz_est, *_ = evaluate_car(
+            engine_row, ab_est, bz_est, *_ = timed_evaluate(
                 car, entry["ab_df"], entry["bz_df"], entry["ab_err"], entry["bz_err"]
             )
 
@@ -265,7 +292,7 @@ def analyze_inventory(
                         entry["bz_df"], entry["bz_err"], entry["bz_depth"] = bz_df, bz_err, max_pages
                         deepened = True
                 if deepened:
-                    engine_row, ab_est, bz_est, *_ = evaluate_car(
+                    engine_row, ab_est, bz_est, *_ = timed_evaluate(
                         car, entry["ab_df"], entry["bz_df"], entry["ab_err"], entry["bz_err"]
                     )
 
@@ -288,6 +315,8 @@ def analyze_inventory(
         reverse=True,
     )
 
+    total_time_s = time.perf_counter() - run_t0
+
     yield {
         "stage": "summary",
         "counts": {
@@ -300,5 +329,17 @@ def analyze_inventory(
         },
         "market_lookups": market_lookups,
         "disabled_sources": sorted(disabled),
+        # --- benchmark: how much runtime is retrieval vs. valuation? --------- #
+        "benchmark": {
+            "total_cars": total_cars,
+            "unique_groups": len(groups),
+            "cached_groups": cached_groups,
+            "http_requests": http_requests,
+            "market_lookups": market_lookups,
+            "retrieval_time_s": round(retrieval_time_s, 4),
+            "eval_time_s": round(eval_time_s, 4),
+            "total_time_s": round(total_time_s, 4),
+            "mode": "cache-only" if http_requests == 0 else "live",
+        },
         "ranked": ranked,
     }
