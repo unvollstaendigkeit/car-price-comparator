@@ -224,13 +224,19 @@ def process_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
 # --------------------------------------------------------------------------- #
 # Full run
 # --------------------------------------------------------------------------- #
-def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
+def run(inv_path: str, max_pages: int, delay: float, out_dir: str,
+        rows: Optional[set[int]] = None) -> None:
     os.makedirs(out_dir, exist_ok=True)
     checkpoint = f"{out_dir}/master_summary.csv"
 
     inv = load_inventory(inv_path)
     cars = [to_invcar(r) for _, r in inv.iterrows()]
-    print(f"Inventory loaded: {len(cars)} cars.")
+    if rows:
+        cars = [c for c in cars if c.row_index in rows]
+        print(f"Inventory loaded; restricting to {len(cars)} target row(s): "
+              f"{sorted(rows)}")
+    else:
+        print(f"Inventory loaded: {len(cars)} cars.")
 
     # Resume support.
     done: dict[int, dict] = {}
@@ -400,8 +406,23 @@ def main():
     ap.add_argument("--max-pages", type=int, default=3)
     ap.add_argument("--delay", type=float, default=1.0)
     ap.add_argument("--out", default="phase7_out")
+    ap.add_argument(
+        "--rows",
+        default=None,
+        help="Restrict to specific inventory row_index values. Either a "
+        "comma-separated list (e.g. '14,57,77') or a path to a CSV with a "
+        "'row_index' column. Omit to run the full inventory.",
+    )
     args = ap.parse_args()
-    run(args.inventory, args.max_pages, args.delay, args.out)
+
+    rows: Optional[set[int]] = None
+    if args.rows:
+        if os.path.exists(args.rows):
+            rows = set(pd.read_csv(args.rows)["row_index"].astype(int).tolist())
+        else:
+            rows = {int(x) for x in args.rows.split(",") if x.strip()}
+
+    run(args.inventory, args.max_pages, args.delay, args.out, rows)
 
 
 if __name__ == "__main__":

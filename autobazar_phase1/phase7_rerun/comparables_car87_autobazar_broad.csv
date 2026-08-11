@@ -1,0 +1,4 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+autobazar,AeHnm-D8qad,Mercedes-Benz A trieda A 180 AT 100kW136HP A7,,Petrol,2020,73498.0,100,Automatic,Mpv/Van,20200,https://www.autobazar.eu/detail/mercedes-benz-a-trieda-a-180-at-100kw136hp-a7/AeHnm-D8qad/,match,unknown,match,n/a,match,match,match,n/a
+autobazar,AeLhvUyfzRM,Mercedes-Benz A trieda A 200 AT 120kW163HP A7,,Petrol,2018,104000.0,120,Automatic,Sedan,20499,https://www.autobazar.eu/detail/mercedes-benz-a-trieda-a-200-at-120kw163hp-a7/AeLhvUyfzRM/,match,unknown,match,n/a,match,match,match,n/a
+autobazar,Amcoj4NROl5,Mercedes-Benz A trieda 180 /T,,Petrol,2020,186000.0,100,Automatic,SUV,17900,https://www.autobazar.eu/detail/mercedes-benz-a-trieda-180-t/Amcoj4NROl5/,match,unknown,match,n/a,match,match,match,n/a

@@ -403,7 +403,11 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.drop_duplicates(subset="url").reset_index(drop=True)
-    return df, note
+        return df, note
+    # Fetched OK but empty -> genuine no-data (record the slug/mode we tried), NOT
+    # a scraper failure. Keeps any existing fallback note appended.
+    no_data = f"no listings at category {brand_slug}/{model_slug}"
+    return df, (f"{note}; {no_data}" if note else no_data)
 
 
 def _bazos_query(car: InvCar) -> str:
@@ -669,7 +673,13 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
     if n and car.price:
         med = stats["median"]
         res["price_difference"] = med - car.price
-        res["undervaluation_pct"] = round((med - car.price) / med * 100, 1) if med else None
+        # "% below market" is measured against the ASKING price, not the market
+        # median. Using the median as denominator made overpriced cars blow up to
+        # nonsensical values (e.g. a EUR 12,200 Touran vs a lone EUR 3,700 ad read
+        # -229.7% instead of the correct -69.7% = "priced ~70% above this sample").
+        # With asking as the base: positive => below market (cheaper, a deal),
+        # negative => above market, and the value is bounded at -100%+ sanely.
+        res["undervaluation_pct"] = round((med - car.price) / car.price * 100, 1)
 
         # Single-listing estimates are inherently fragile: one mispriced ad IS
         # the median. Never let them read as reliable.

@@ -129,11 +129,23 @@ def test_estimate_single_listing_flagged():
     assert est["confidence"] == "low"  # never medium/high on n=1
 
 
+def test_undervaluation_pct_is_relative_to_asking_price():
+    # The real VW Touran case: asking EUR 12,200 vs a lone EUR 3,700 comparable.
+    # Denominator must be the ASKING price, giving a sane -69.7% ("priced ~70%
+    # above this sample"), NOT the -229.7% the market-median denominator produced.
+    car = _car("VW", "Touran", price=12200)
+    est = estimate(car, _matched([3700]))
+    assert est["undervaluation_pct"] == round((3700 - 12200) / 12200 * 100, 1)
+    assert est["undervaluation_pct"] == -69.7
+    # And a genuine below-market deal reads positive:
+    car2 = _car("VW", "ID.3", price=9000)
+    est2 = estimate(car2, _matched([16000, 17000, 18000, 17500]))
+    assert est2["undervaluation_pct"] > 0  # cheaper than market => positive
+
+
 def test_estimate_implausible_low_ratio_suppressed():
-    # The VW Touran -229.7% shape: undervaluation of -229% means the "market"
-    # median is only ~30% of asking... no: -229% => median = ask*(1-2.29) < 0,
-    # which in practice comes from a mispriced ad like a EUR 350 monthly-lease
-    # figure parsed as the price vs a EUR 12,000 asking car. ratio 0.03 << 0.20.
+    # A mispriced ad like a EUR 600 (deposit/monthly figure) vs a EUR 12,000
+    # asking car: ratio 0.05 << 0.20 -> estimate suppressed as an artifact.
     car = _car("VW", "Touran", price=12000)
     est = estimate(car, _matched([600]))  # ratio 0.05, above the EUR 300 floor
     assert est["estimated_market_price"] is None

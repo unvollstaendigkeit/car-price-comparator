@@ -1,0 +1,60 @@
+
+======================================================================
+DIAGNOSTIC SUMMARY
+======================================================================
+Total inventory cars processed : 20
+
+Confidence flags:
+  HIGH        : 0
+  MEDIUM      : 4
+  LOW         : 3
+  INSUFFICIENT: 13
+
+Source coverage (>=1 comparable):
+  Autobazar data : 11/20
+  Bazos data     : 16/20
+  BOTH sources   : 10/20
+Source coverage (>=4 usable comparables):
+  Autobazar usable: 4/20
+  Bazos usable    : 4/20
+
+Significant cross-source disagreement (>30% median spread): 5
+
+Models most frequently producing INSUFFICIENT samples:
+   2x  BMW 3 Series
+   1x  Subaru Impreza
+   1x  Skoda Superb
+   1x  BMW X1
+   1x  Volkswagen Passat
+   1x  Renault Mégane
+   1x  VW Golf
+   1x  BMW X3
+   1x  Peugeot 3008
+   1x  Audi A5
+   1x  Mercedes B-Class
+   1x  Mercedes A-Class
+
+Models with retrieval failure (no listings from either source):
+   1x  Skoda Superb
+   1x  Volkswagen Passat
+   1x  VW Golf
+
+======================================================================
+RANKED - most below market (top 15)
+======================================================================
+ row_index      brand     model  year  inventory_price_eur  ab_price_diff_pct  bz_price_diff_pct rank_source  rank_price_diff_pct confidence_flag
+        74        BMW      318d  2009                 1600               68.0               74.2       bazos                 74.2          MEDIUM
+        57         VW    Passat  2006                  900               63.9                NaN   autobazar                 63.9          MEDIUM
+         5     Subaru   Impreza  2019                11000                NaN               61.8       bazos                 61.8    INSUFFICIENT
+        50       Ford     S-Max  2017                 3800                NaN               58.5       bazos                 58.5             LOW
+        78        BMW  2 Series  2020                 9000                NaN               56.9       bazos                 56.9             LOW
+        87   Mercedes   A-Class  2017                 9500               53.0                NaN   autobazar                 53.0    INSUFFICIENT
+        37        BMW  3 Series  2019                13500               43.7               28.7   autobazar                 43.7    INSUFFICIENT
+        73        BMW  3 Series  2019                14000               41.7               26.1   autobazar                 41.7    INSUFFICIENT
+        43   Mercedes Gla-Class  2017                 9800               39.9                6.7   autobazar                 39.9          MEDIUM
+        33        BMW        X3  2019                20000               32.8               24.5   autobazar                 32.8    INSUFFICIENT
+        21    Renault    Mégane  2020                11500                NaN               28.1       bazos                 28.1    INSUFFICIENT
+        14        BMW        X1  2018                11500               30.5               23.8       bazos                 23.8    INSUFFICIENT
+        80 Volkswagen    Touran  2018                12200               20.7             -229.7   autobazar                 20.7          MEDIUM
+        49       Audi        A5  2016                 7500                NaN               20.2       bazos                 20.2    INSUFFICIENT
+        51   Mercedes   B-Class  2015                 6800               15.5               58.0   autobazar                 15.5    INSUFFICIENT
