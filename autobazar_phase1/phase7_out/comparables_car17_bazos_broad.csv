@@ -1,0 +1,4 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+bazos,193922157,"SEAT LEON ST, FR, 2,0 TDI, AUTOMAT - DSG, 5/2019, 148 225 KM",,Diesel,2019.0,148225.0,110.0,Automatic,Kombi,12990.0,https://auto.bazos.sk/inzerat/193922157/seat-leon-st-fr-20-tdi-automat-dsg-52019-148-225-km.php,match,match,match,n/a,match,match,match,n/a
+bazos,193768729,Predam SEAT LEON,,Diesel,2015.0,107000.0,,,,8700.0,https://auto.bazos.sk/inzerat/193768729/predam-seat-leon.php,match,match,match,n/a,match,match,unknown,n/a
+bazos,194047107,Seat Leon 2.0 TDI FR DSG,2.0 TDI,Diesel,2013.0,241500.0,110.0,Automatic,Hatchback,7690.0,https://auto.bazos.sk/inzerat/194047107/seat-leon-20-tdi-fr-dsg.php,match,match,match,n/a,match,match,match,n/a
