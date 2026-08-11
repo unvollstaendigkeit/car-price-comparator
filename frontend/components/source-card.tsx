@@ -86,11 +86,11 @@ export function SourceCard({
             {pct !== null && pct !== undefined && (
               <div className="mt-3 flex flex-col gap-0.5">
                 {diffAbs !== null && (
-                  <span className={cn("text-[15px] font-medium", toneCls)}>
+                  <span className={cn("text-[18px] font-semibold", toneCls)}>
                     {fmtEur(diffAbs)} {diffDir}
                   </span>
                 )}
-                <span className="text-[13px] text-muted">
+                <span className="text-[15px] text-muted">
                   <span className={toneCls}>{fmtPctPlain(pct)} {toneLabel}</span>
                   {askingPriceEur !== null && askingPriceEur !== undefined && (
                     <span className="text-faint"> · your asking {fmtEur(askingPriceEur)}</span>
