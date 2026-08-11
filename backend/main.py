@@ -127,7 +127,11 @@ def _to_input(p: CarPayload) -> SingleCarInput:
 # --------------------------------------------------------------------------- #
 # Health
 # --------------------------------------------------------------------------- #
-@app.get("/api/health")
+# NOTE: routes are declared WITHOUT the `/api` prefix. This backend runs as a
+# Vercel service mounted at routePrefix `/api` (see vercel.json), and Vercel
+# STRIPS that prefix before forwarding — so the frontend calls `/api/health`
+# while the backend serves `/health`. Keep every route below prefix-free.
+@app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -141,7 +145,7 @@ class ParseRowPayload(BaseModel):
     text: str
 
 
-@app.post("/api/parse-row")
+@app.post("/parse-row")
 def parse_row(payload: ParseRowPayload) -> dict:
     parsed = parse_pasted_row(payload.text or "")
     return _json_safe(parsed.to_dict())
@@ -153,7 +157,7 @@ def parse_row(payload: ParseRowPayload) -> dict:
 # there is exactly one normalization methodology across the app. The response
 # is a review report the frontend renders before any (future) valuation phase.
 # --------------------------------------------------------------------------- #
-@app.post("/api/inventory/parse")
+@app.post("/inventory/parse")
 async def inventory_parse(file: UploadFile = File(...)) -> dict:
     content = await file.read()
     try:
@@ -162,7 +166,7 @@ async def inventory_parse(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/inventory/demo")
+@app.get("/inventory/demo")
 def inventory_demo(name: str = "sample") -> dict:
     try:
         return _json_safe(parse_demo(name))
@@ -185,7 +189,7 @@ class InventoryAnalyzePayload(BaseModel):
     refresh: bool = False  # force a live refresh, ignoring cached pools
 
 
-@app.post("/api/inventory/analyze/stream")
+@app.post("/inventory/analyze/stream")
 def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
     # A persistent, cache-first market layer: fresh (source, brand, model) pools
     # are reused across runs with ZERO HTTP; misses/expiries fetch live and
@@ -214,7 +218,7 @@ def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingRespo
 # --------------------------------------------------------------------------- #
 # Single-car: synchronous
 # --------------------------------------------------------------------------- #
-@app.post("/api/compare")
+@app.post("/compare")
 def compare(payload: CarPayload) -> dict:
     result = compare_single_car(
         _to_input(payload), max_pages=payload.max_pages, delay=payload.delay
@@ -233,7 +237,7 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(_json_safe(payload), ensure_ascii=False)}\n\n"
 
 
-@app.post("/api/compare/stream")
+@app.post("/compare/stream")
 def compare_stream(payload: CarPayload) -> StreamingResponse:
     inp = _to_input(payload)
 
