@@ -57,6 +57,8 @@ except ImportError:
 
 # Reuse the vetted primitives from the Autobazar layer (same folder / package).
 from autobazar_scraper import BlockedError, HEADERS, clean_int  # noqa: E402
+import http_client  # bounded, instrumented GET (hard wall-clock deadline)
+from http_client import FetchTimeout  # noqa: F401 - re-exported for callers
 
 
 BASE = "https://auto.bazos.sk"
@@ -126,15 +128,25 @@ def crp_for_page(page: int) -> int:
 # --------------------------------------------------------------------------- #
 # Fetching (stop-and-report on any block; never bypass)
 # --------------------------------------------------------------------------- #
-def fetch(url: str, timeout: int = 30) -> str:
-    """GET one page with ordinary HTTP; raise BlockedError on any block signal."""
+def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "", page: int = 0) -> str:
+    """GET one page with ordinary HTTP; raise BlockedError on any block signal.
+
+    The GET is hard-bounded by http_client (wall-clock deadline, capped
+    redirects/size, no retries), so a slow/hanging server can no longer block
+    the run. A timeout surfaces as FetchTimeout (a SOFT, non-block failure) and
+    propagates to the caller, which keeps any partial results and moves on. A
+    network/connection error still maps to BlockedError, as before.
+    """
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        status, body, _headers = http_client.get_bounded(
+            url, HEADERS, source="bazos", brand=brand, model=model, page=page,
+        )
+    except FetchTimeout:
+        raise  # non-block soft failure; do NOT convert to BlockedError
     except requests.RequestException as exc:
         raise BlockedError(f"Network error retrieving {url!r}: {exc}") from exc
 
-    status = resp.status_code
-    body = resp.text or ""
+    body = body or ""
 
     if status in (401, 403, 429) or status >= 500:
         raise BlockedError(

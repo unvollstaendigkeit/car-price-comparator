@@ -349,17 +349,27 @@ def _ab_slugs(car: InvCar, use_live_facet: bool = True) -> tuple[str, str]:
     return brand_slug, ab._slugify(car.model)
 
 
-def _fetch_ab_pages(url_for_page, max_pages: int, delay: float) -> list[dict]:
+def _fetch_ab_pages(url_for_page, max_pages: int, delay: float,
+                    brand: str = "", model: str = "") -> tuple[list[dict], Optional[str]]:
+    """Fetch up to `max_pages` Autobazar pages.
+
+    Returns (rows, timeout_note). A hard per-request FetchTimeout is a SOFT
+    failure: we stop paginating but KEEP the pages already gathered and report
+    a TIMEOUT note (never a block). BlockedError still propagates to the caller.
+    """
     rows: list[dict] = []
     for page in range(1, max_pages + 1):
-        html = ab.fetch(url_for_page(page))  # raises BlockedError -> caller handles
+        try:
+            html = ab.fetch(url_for_page(page), brand=brand, model=model, page=page)
+        except ab.FetchTimeout as e:
+            return rows, f"TIMEOUT: page {page} exceeded the per-request deadline ({e})"
         listings, _mode = ab.parse_listings(html)
         if not listings:
             break
         rows.extend(_norm_market_row("autobazar", r) for r in listings)
         if page < max_pages:
             time.sleep(delay)
-    return rows
+    return rows, None
 
 
 def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
@@ -380,8 +390,9 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
         return base if page <= 1 else f"{base}?page={page}"
 
     note: Optional[str] = None
+    tnote: Optional[str] = None
     try:
-        rows = _fetch_ab_pages(cat_url, max_pages, delay)
+        rows, tnote = _fetch_ab_pages(cat_url, max_pages, delay, car.brand, car.model)
     except ab.BlockedError as e:
         # 404 = wrong slug -> keyword fallback; anything else is a real stop.
         if "HTTP 404" not in str(e):
@@ -390,8 +401,9 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
         time.sleep(delay)
         keyword = f"{car.brand} {car.model}"
         try:
-            rows = _fetch_ab_pages(
-                lambda p: ab.build_search_url(keyword=keyword, page=p), max_pages, delay
+            rows, tnote = _fetch_ab_pages(
+                lambda p: ab.build_search_url(keyword=keyword, page=p), max_pages, delay,
+                car.brand, car.model,
             )
         except ab.BlockedError as e2:
             return pd.DataFrame(), f"BLOCKED (fallback): {e2}"
@@ -400,12 +412,16 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
     except Exception as e:  # noqa: BLE001 - surface, never hide
         return pd.DataFrame(), f"ERROR: {type(e).__name__}: {e}"
 
+    # A timeout that still yielded partial rows is reported (non-block) but the
+    # data is kept and used; combine it with any fallback note.
+    note = "; ".join(n for n in (note, tnote) if n) or None
+
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.drop_duplicates(subset="url").reset_index(drop=True)
         return df, note
     # Fetched OK but empty -> genuine no-data (record the slug/mode we tried), NOT
-    # a scraper failure. Keeps any existing fallback note appended.
+    # a scraper failure. Keeps any existing fallback/timeout note appended.
     no_data = f"no listings at category {brand_slug}/{model_slug}"
     return df, (f"{note}; {no_data}" if note else no_data)
 

@@ -43,6 +43,9 @@ try:
 except ImportError:  # pandas is optional for a raw run, required to build the table
     pd = None
 
+import http_client  # bounded, instrumented GET (hard wall-clock deadline)
+from http_client import FetchTimeout  # noqa: F401 - re-exported for callers
+
 
 BASE = "https://www.autobazar.eu"
 
@@ -137,22 +140,28 @@ def _slugify(value: str) -> str:
 # --------------------------------------------------------------------------- #
 # Fetching (with explicit anti-bot detection -> stop, never bypass)
 # --------------------------------------------------------------------------- #
-def fetch(url: str, timeout: int = 30) -> str:
+def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "", page: int = 0) -> str:
     """GET a single page with ordinary HTTP. Detect blocking and STOP if seen.
 
     Returns the response body (HTML). Raises BlockedError with a clear
     explanation if the site appears to challenge or block the request.
+
+    The GET is hard-bounded by http_client (wall-clock deadline, capped
+    redirects/size, no retries). A slow/hanging server surfaces as FetchTimeout
+    (a SOFT, non-block failure) and propagates to the caller so it can keep any
+    partial results and continue; a connection error still maps to BlockedError.
     """
     try:
-        resp = requests.get(
-            url, headers=HEADERS, timeout=timeout, allow_redirects=True
+        status, body, resp_headers = http_client.get_bounded(
+            url, HEADERS, source="autobazar", brand=brand, model=model, page=page,
         )
+    except FetchTimeout:
+        raise  # non-block soft failure; do NOT convert to BlockedError
     except requests.RequestException as exc:
         raise BlockedError(f"Network error retrieving {url!r}: {exc}") from exc
 
-    status = resp.status_code
-    body = resp.text or ""
-    bot_header = resp.headers.get("x-bot-request")
+    body = body or ""
+    bot_header = resp_headers.get("x-bot-request")
 
     # 1) HTTP-level blocking signals.
     if status in (401, 403, 429) or status >= 500:
