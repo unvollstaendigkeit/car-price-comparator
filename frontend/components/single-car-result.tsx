@@ -1,15 +1,10 @@
 "use client"
 
 import type { CompareResult, SourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, valuationTone } from "@/lib/format"
+import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear } from "@/lib/format"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
 import { Disclosure } from "./disclosure"
-
-const SOURCE_LABELS: Record<string, string> = {
-  autobazar: "Autobazar.eu",
-  bazos: "Bazoš.sk",
-}
 
 const AGREEMENT_COPY: Record<string, { label: string; cls: string; note: string }> = {
   agree: {
@@ -36,23 +31,6 @@ function isUsable(s: SourceResult): boolean {
 export function SingleCarResult({ result }: { result: CompareResult }) {
   const { car, sources, cross_source, confidence } = result
   const agreement = cross_source.agreement ? AGREEMENT_COPY[cross_source.agreement] : null
-
-  const primaryKey = result.primary_source_for_ranking
-  const primaryPct = result.primary_undervaluation_pct
-  const primaryData = primaryKey ? sources[primaryKey as "autobazar" | "bazos"] : null
-  const primaryLabel = primaryKey ? SOURCE_LABELS[primaryKey] ?? primaryKey : null
-
-  const tone = valuationTone(primaryPct)
-  const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-muted"
-  const toneLabel = tone === "positive" ? "below market" : tone === "negative" ? "above market" : "at market"
-  // Euro gap between the market median and the user's asking price, framed by
-  // direction. Display-only: uses existing values, no recalculation.
-  const primaryDiffAbs =
-    primaryData && primaryData.price_difference_eur !== null && primaryData.price_difference_eur !== undefined
-      ? Math.abs(primaryData.price_difference_eur)
-      : null
-  const diffDir =
-    tone === "positive" ? "above your asking price" : tone === "negative" ? "below your asking price" : "vs. your asking price"
 
   // Human one-liner about evidence coverage (derived from existing flags only).
   const abUsable = isUsable(sources.autobazar)
@@ -89,42 +67,9 @@ export function SingleCarResult({ result }: { result: CompareResult }) {
         </div>
       </div>
 
-      {/* 2 — The key market-position result */}
+      {/* 2 — Confidence in the estimate (headline number lives in each source card below) */}
       <section className="rounded-lg border border-border bg-surface">
-        <div className="px-5 pb-5 pt-4">
-          <p className="text-[13px] uppercase tracking-wide text-faint">
-            What this car is worth{primaryLabel ? ` · via ${primaryLabel}` : ""}
-          </p>
-          {primaryData && primaryPct !== null && primaryPct !== undefined ? (
-            <div className="mt-2">
-              <p className="font-mono text-5xl font-semibold leading-none tabular-nums text-foreground">
-                {fmtEur(primaryData.median_asking_eur)}
-              </p>
-              <p className="mt-1.5 text-sm text-faint">Median asking price on the market</p>
-
-              <div className="mt-4 flex flex-col gap-1">
-                {primaryDiffAbs !== null && (
-                  <span className={cn("text-lg font-medium", toneCls)}>
-                    {fmtEur(primaryDiffAbs)} {diffDir}
-                  </span>
-                )}
-                <span className="text-sm text-muted">
-                  <span className={toneCls}>
-                    {fmtPctPlain(primaryPct)} {toneLabel}
-                  </span>
-                  <span className="text-faint"> · your asking price {fmtEur(car.asking_price_eur)}</span>
-                </span>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-2 text-lg font-medium text-muted">
-              Not enough data to estimate a reliable market position.
-            </p>
-          )}
-        </div>
-
-        {/* 3 — Confidence (subtle) */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border px-5 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-4">
           <ConfidenceBadge flag={confidence.flag} />
           <span className="text-sm text-muted">{coverage}</span>
           {agreement && cross_source.median_spread_pct !== null && (

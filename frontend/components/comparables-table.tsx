@@ -1,11 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import type { Comparable } from "@/lib/types"
 import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
 
 export function ComparablesTable({ rows }: { rows: Comparable[] }) {
-  const [expanded, setExpanded] = useState(false)
   if (!rows || rows.length === 0) {
     return (
       <p className="px-4 py-6 text-center text-sm text-faint">
@@ -13,8 +11,6 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
       </p>
     )
   }
-
-  const shown = expanded ? rows : rows.slice(0, 5)
 
   return (
     <div className="overflow-hidden">
@@ -29,7 +25,7 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
             </tr>
           </thead>
           <tbody>
-            {shown.map((r, i) => (
+            {rows.map((r, i) => (
               <tr
                 key={`${r.url ?? "row"}-${i}`}
                 className="border-b border-border/50 last:border-0 hover:bg-surface-2/60"
@@ -57,15 +53,6 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
           </tbody>
         </table>
       </div>
-      {rows.length > 5 && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full border-t border-border px-3 py-2.5 text-center text-[13px] font-medium text-accent hover:bg-surface-2/60"
-        >
-          {expanded ? "Show fewer" : `Show all ${rows.length} comparables`}
-        </button>
-      )}
     </div>
   )
 }
