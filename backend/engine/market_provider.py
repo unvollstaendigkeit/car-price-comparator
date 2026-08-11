@@ -207,11 +207,12 @@ class LiveMarketProvider:
         # Live always fetches; nothing is served from cache.
         return None
 
-    def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
+    def retrieve(self, source: str, car, pages: int,
+                 deadline: Optional[float] = None) -> RetrieveResult:
         fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
         t0 = time.perf_counter()
         reqs_before = http_client.request_count()
-        df, err = fn(car, pages, self.delay)
+        df, err = fn(car, pages, self.delay, deadline)
         # True number of network GETs issued (may be 1..pages, or more with a
         # keyword fallback) — not the previous hardcoded 1.
         http_reqs = http_client.request_count() - reqs_before
@@ -240,7 +241,9 @@ class CachedMarketProvider:
             return None
         return {"from_cache": True, "age_s": MarketStore.age_of(hit)}
 
-    def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
+    def retrieve(self, source: str, car, pages: int,
+                 deadline: Optional[float] = None) -> RetrieveResult:
+        # Zero-HTTP replay: the per-model deadline is irrelevant (no network).
         hit = self.store.get(source, car.brand, car.model, pages)
         if hit is None:
             return RetrieveResult(pd.DataFrame(), CACHE_MISS_ERR, 0.0, 0)
@@ -292,7 +295,8 @@ class PersistentCacheProvider:
             return None
         return {"from_cache": True, "age_s": MarketStore.age_of(hit)}
 
-    def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
+    def retrieve(self, source: str, car, pages: int,
+                 deadline: Optional[float] = None) -> RetrieveResult:
         if not self.force_refresh:
             hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
             if hit is not None:
@@ -300,11 +304,12 @@ class PersistentCacheProvider:
                     hit["df"].copy(deep=True), hit["err"], 0.0, 0,
                     from_cache=True, age_s=MarketStore.age_of(hit),
                 )
-        # Miss, expiry, or forced refresh -> live fetch (1..pages polite GETs).
+        # Miss, expiry, or forced refresh -> live fetch (1..pages polite GETs),
+        # bounded by the per-model deadline threaded down to the page loop.
         fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
         t0 = time.perf_counter()
         reqs_before = http_client.request_count()
-        df, err = fn(car, pages, self.delay)
+        df, err = fn(car, pages, self.delay, deadline)
         http_reqs = http_client.request_count() - reqs_before
         elapsed = time.perf_counter() - t0
         err = err or ""

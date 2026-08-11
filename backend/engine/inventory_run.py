@@ -46,6 +46,13 @@ START_PAGES = 1          # pages/source fetched on first touch of a model
 MAX_PAGES = 3            # hard cap; matches single-car retrieval depth
 DELAY = 1.0              # seconds between requests (polite, single-threaded)
 BLOCK_LIMIT = 3          # consecutive blocks on a source -> disable it
+# Hard wall-clock ceiling for ALL retrieval of one (brand, model) group. Even
+# though each request is individually bounded, a model can stack many sequential
+# GETs (initial fetch + keyword fallback + progressive deepening + its own
+# fallback). Without this ceiling one pathological model can burn minutes; with
+# it, retrieval for a model stops the moment the budget is spent, keeps whatever
+# was gathered, and the run moves on. This is a safety net, not the common path.
+MODEL_BUDGET_S = 90.0
 # Only deepen a model's pool when the shallow fetch looks like it had a full
 # page (i.e. more pages plausibly exist). Avoids wasting requests on models that
 # genuinely only have a handful of ads.
@@ -66,6 +73,15 @@ def _is_timeout(err: str) -> bool:
     Phase-6 wrappers as 'TIMEOUT: ...' (possibly after a fallback note).
     """
     return "TIMEOUT" in (err or "")
+
+
+def _is_budget_timeout(err: str) -> bool:
+    """
+    Specifically a per-MODEL time-budget overrun (the safety net), as opposed to
+    an ordinary single-request timeout. Reported so the UI can say 'TIME BUDGET
+    EXCEEDED' distinctly from a one-off slow page.
+    """
+    return "time budget" in (err or "").lower()
 
 
 def _links(joined: str) -> list[str]:
@@ -148,12 +164,14 @@ def analyze_inventory(
     start_pages: int = START_PAGES,
     max_pages: int = MAX_PAGES,
     block_limit: int = BLOCK_LIMIT,
+    model_budget_s: float = MODEL_BUDGET_S,
     provider=None,
 ) -> Iterator[dict]:
     """
     Analyze a confirmed inventory. Yields event dicts:
 
-      start | group_start | retrieved | source_disabled | car_done | summary
+      start | group_start | retrieved | source_timeout | group_timeout
+            | source_disabled | car_done | summary
 
     Grouping by (brand, model) means marketplace lookups scale with the number
     of UNIQUE models, not the number of cars.
@@ -162,6 +180,12 @@ def analyze_inventory(
     defaults to a LiveMarketProvider (real, polite retrieval) so existing
     callers are unchanged. Pass a CachedMarketProvider for a zero-HTTP run.
     The summary event carries benchmark timings (retrieval vs. valuation).
+
+    `model_budget_s` is the hard wall-clock ceiling for ALL retrieval of one
+    (brand, model) group. When exceeded, retrieval for that model stops
+    immediately, whatever partial marketplace data was gathered is still
+    evaluated, the model is marked TIME BUDGET EXCEEDED, and the run continues.
+    This guarantees no single model can stall the whole inventory run.
     """
     if provider is None:
         provider = LiveMarketProvider(delay=delay)
@@ -192,6 +216,7 @@ def analyze_inventory(
     disabled: set[str] = set()
     timeouts = {"autobazar": 0, "bazos": 0}   # per-source SOFT deadline overruns
     errors = {"autobazar": 0, "bazos": 0}     # per-source hard block/error notes
+    model_timeouts = 0          # (brand, model) groups that hit the time budget
     market_lookups = 0          # provider.retrieve calls (both modes)
     http_requests = 0           # real network requests (0 when fully cached)
     cache_hits = 0              # provider.retrieve calls served from cache (0 HTTP)
@@ -214,12 +239,19 @@ def analyze_inventory(
         except Exception:  # noqa: BLE001 - peek is advisory only
             return None
 
-    def fetch(source: str, car, pages: int) -> RetrieveResult:
-        """One retrieval via the provider, honoring the circuit breaker."""
+    def fetch(source: str, car, pages: int, deadline: Optional[float] = None) -> RetrieveResult:
+        """One retrieval via the provider, honoring the circuit breaker and the
+        per-model time budget (`deadline`, an absolute time.perf_counter())."""
         nonlocal market_lookups, http_requests, cache_hits, retrieval_time_s
         if source in disabled:
             return RetrieveResult(pd.DataFrame(), "DISABLED: source disabled after repeated blocks", 0.0, 0)
-        res = provider.retrieve(source, car, pages)
+        # Budget already spent before we even start: skip the network entirely.
+        if deadline is not None and time.perf_counter() >= deadline:
+            return RetrieveResult(
+                pd.DataFrame(),
+                "TIMEOUT: model time budget exceeded before fetch", 0.0, 0,
+            )
+        res = provider.retrieve(source, car, pages, deadline=deadline)
         err = res.err or ""
         market_lookups += 1
         http_requests += res.http_requests

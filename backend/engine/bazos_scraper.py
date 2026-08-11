@@ -128,7 +128,8 @@ def crp_for_page(page: int) -> int:
 # --------------------------------------------------------------------------- #
 # Fetching (stop-and-report on any block; never bypass)
 # --------------------------------------------------------------------------- #
-def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "", page: int = 0) -> str:
+def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "",
+          page: int = 0, deadline: float | None = None) -> str:
     """GET one page with ordinary HTTP; raise BlockedError on any block signal.
 
     The GET is hard-bounded by http_client (wall-clock deadline, capped
@@ -136,10 +137,23 @@ def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "", page
     the run. A timeout surfaces as FetchTimeout (a SOFT, non-block failure) and
     propagates to the caller, which keeps any partial results and moves on. A
     network/connection error still maps to BlockedError, as before.
+
+    `deadline` (absolute time.perf_counter() value, optional) is the per-model
+    time budget: when given, this request's ceilings are shrunk to the remaining
+    time so it cannot overshoot the budget, and if no time is left we raise
+    FetchTimeout immediately without touching the network.
     """
+    bounds: dict = {}
+    if deadline is not None:
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            raise FetchTimeout(f"{url!r}: model time budget exhausted before request")
+        bounds = http_client.bounds_for_remaining(remaining)
+
     try:
         status, body, _headers = http_client.get_bounded(
             url, HEADERS, source="bazos", brand=brand, model=model, page=page,
+            **bounds,
         )
     except FetchTimeout:
         raise  # non-block soft failure; do NOT convert to BlockedError

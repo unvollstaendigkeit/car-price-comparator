@@ -349,30 +349,50 @@ def _ab_slugs(car: InvCar, use_live_facet: bool = True) -> tuple[str, str]:
     return brand_slug, ab._slugify(car.model)
 
 
+def _budgeted_sleep(delay: float, deadline: Optional[float]) -> None:
+    """Polite inter-page sleep that never runs past the per-model deadline."""
+    if deadline is None:
+        time.sleep(delay)
+        return
+    remaining = deadline - time.perf_counter()
+    if remaining > 0:
+        time.sleep(min(delay, remaining))
+
+
 def _fetch_ab_pages(url_for_page, max_pages: int, delay: float,
-                    brand: str = "", model: str = "") -> tuple[list[dict], Optional[str]]:
+                    brand: str = "", model: str = "",
+                    deadline: Optional[float] = None) -> tuple[list[dict], Optional[str]]:
     """Fetch up to `max_pages` Autobazar pages.
 
     Returns (rows, timeout_note). A hard per-request FetchTimeout is a SOFT
     failure: we stop paginating but KEEP the pages already gathered and report
     a TIMEOUT note (never a block). BlockedError still propagates to the caller.
+
+    `deadline` (absolute time.perf_counter(), optional) is the per-model time
+    budget. We check it BEFORE every page GET so we stop the moment the budget
+    is spent (keeping the pages already fetched), and we never sleep past it.
     """
     rows: list[dict] = []
     for page in range(1, max_pages + 1):
+        if deadline is not None and time.perf_counter() >= deadline:
+            return rows, (f"TIMEOUT: model time budget exceeded after {page - 1} "
+                          f"page(s); kept {len(rows)} listing(s)")
         try:
-            html = ab.fetch(url_for_page(page), brand=brand, model=model, page=page)
+            html = ab.fetch(url_for_page(page), brand=brand, model=model,
+                            page=page, deadline=deadline)
         except ab.FetchTimeout as e:
-            return rows, f"TIMEOUT: page {page} exceeded the per-request deadline ({e})"
+            return rows, f"TIMEOUT: page {page} exceeded the deadline ({e})"
         listings, _mode = ab.parse_listings(html)
         if not listings:
             break
         rows.extend(_norm_market_row("autobazar", r) for r in listings)
         if page < max_pages:
-            time.sleep(delay)
+            _budgeted_sleep(delay, deadline)
     return rows, None
 
 
-def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
+def retrieve_autobazar(car: InvCar, max_pages: int, delay: float,
+                       deadline: Optional[float] = None) -> tuple[pd.DataFrame, Optional[str]]:
     """
     Retrieve Autobazar candidates via the CATEGORY PATH
     (/vysledky/osobne-vozidla/{brand}/{model}/), which is a genuine server-side
@@ -392,18 +412,22 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
     note: Optional[str] = None
     tnote: Optional[str] = None
     try:
-        rows, tnote = _fetch_ab_pages(cat_url, max_pages, delay, car.brand, car.model)
+        rows, tnote = _fetch_ab_pages(cat_url, max_pages, delay, car.brand, car.model, deadline)
     except ab.BlockedError as e:
         # 404 = wrong slug -> keyword fallback; anything else is a real stop.
         if "HTTP 404" not in str(e):
             return pd.DataFrame(), f"BLOCKED: {e}"
+        # Only spend a fallback (another set of GETs) if the budget allows it.
+        if deadline is not None and time.perf_counter() >= deadline:
+            return pd.DataFrame(), (f"TIMEOUT: model time budget exceeded before "
+                                    f"keyword fallback for {brand_slug}/{model_slug}")
         note = f"category slug {brand_slug}/{model_slug} 404 -> keyword fallback"
-        time.sleep(delay)
+        _budgeted_sleep(delay, deadline)
         keyword = f"{car.brand} {car.model}"
         try:
             rows, tnote = _fetch_ab_pages(
                 lambda p: ab.build_search_url(keyword=keyword, page=p), max_pages, delay,
-                car.brand, car.model,
+                car.brand, car.model, deadline,
             )
         except ab.BlockedError as e2:
             return pd.DataFrame(), f"BLOCKED (fallback): {e2}"
@@ -441,7 +465,8 @@ def _bazos_query(car: InvCar) -> str:
     return f"{car.brand} {model}".strip()
 
 
-def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
+def retrieve_bazos(car: InvCar, max_pages: int, delay: float,
+                   deadline: Optional[float] = None) -> tuple[pd.DataFrame, Optional[str]]:
     """
     Retrieve Bazos candidates by normalized free-text query.
 
@@ -457,13 +482,18 @@ def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFr
     tnote: Optional[str] = None
     try:
         for page in range(1, max_pages + 1):
+            if deadline is not None and time.perf_counter() >= deadline:
+                tnote = (f"TIMEOUT: model time budget exceeded after {page - 1} "
+                         f"page(s); kept {len(rows)} listing(s)")
+                break
             url = bz.build_search_url(query, crp=bz.crp_for_page(page))
             try:
-                html = bz.fetch(url, brand=car.brand, model=car.model, page=page)
+                html = bz.fetch(url, brand=car.brand, model=car.model,
+                                page=page, deadline=deadline)
             except bz.FetchTimeout as e:
                 # SOFT failure: stop paginating, KEEP partial rows, report a
                 # non-block TIMEOUT note (must not trip the circuit breaker).
-                tnote = f"TIMEOUT: page {page} exceeded the per-request deadline ({e})"
+                tnote = f"TIMEOUT: page {page} exceeded the deadline ({e})"
                 break
             pages_ok += 1
             cards = bz.parse_page(html, query, page)
@@ -471,7 +501,7 @@ def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFr
                 break
             rows.extend(_norm_market_row("bazos", r) for r in cards)
             if page < max_pages:
-                time.sleep(delay)
+                _budgeted_sleep(delay, deadline)
     except bz.BlockedError as e:
         return pd.DataFrame(rows), f"BLOCKED: {e}"
     except Exception as e:  # noqa: BLE001

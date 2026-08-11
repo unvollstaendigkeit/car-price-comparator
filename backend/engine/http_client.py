@@ -59,6 +59,23 @@ class FetchTimeout(Exception):
     """
 
 
+def bounds_for_remaining(remaining_s: float) -> dict:
+    """
+    Cap the per-request bounds so a SINGLE in-flight GET cannot run past
+    `remaining_s` seconds. Used by the per-model time budget: the caller passes
+    the time it has left for the current (brand, model) group and we shrink the
+    connect/read/body ceilings to fit inside it. Never returns a non-positive
+    ceiling (a floor of 0.1s keeps `requests` valid); callers should themselves
+    skip the request entirely when there is effectively no time left.
+    """
+    r = max(0.1, remaining_s)
+    return {
+        "connect_timeout": min(CONNECT_TIMEOUT_S, r),
+        "read_timeout": min(READ_GAP_TIMEOUT_S, r),
+        "total_deadline_s": min(TOTAL_DEADLINE_S, r),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Per-request instrumentation (run-scoped, thread-safe).
 # --------------------------------------------------------------------------- #
