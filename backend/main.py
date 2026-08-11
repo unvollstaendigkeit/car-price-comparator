@@ -127,11 +127,12 @@ def _to_input(p: CarPayload) -> SingleCarInput:
 # --------------------------------------------------------------------------- #
 # Health
 # --------------------------------------------------------------------------- #
-# NOTE: routes are declared WITHOUT the `/api` prefix. This backend runs as a
-# Vercel service mounted at routePrefix `/api` (see vercel.json), and Vercel
-# STRIPS that prefix before forwarding — so the frontend calls `/api/health`
-# while the backend serves `/health`. Keep every route below prefix-free.
-@app.get("/health")
+# NOTE: routes are declared WITH the `/api` prefix. This backend runs as a
+# Vercel service (see vercel.json `services`), and the top-level rewrite
+# `"/api/(.*)" -> { service: backend }` forwards the ORIGINAL path unchanged —
+# the service receives `/api/health`, NOT `/health`. Keep the `/api` prefix on
+# every route below so they match what Vercel forwards.
+@app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -145,7 +146,7 @@ class ParseRowPayload(BaseModel):
     text: str
 
 
-@app.post("/parse-row")
+@app.post("/api/parse-row")
 def parse_row(payload: ParseRowPayload) -> dict:
     parsed = parse_pasted_row(payload.text or "")
     return _json_safe(parsed.to_dict())
@@ -157,7 +158,7 @@ def parse_row(payload: ParseRowPayload) -> dict:
 # there is exactly one normalization methodology across the app. The response
 # is a review report the frontend renders before any (future) valuation phase.
 # --------------------------------------------------------------------------- #
-@app.post("/inventory/parse")
+@app.post("/api/inventory/parse")
 async def inventory_parse(file: UploadFile = File(...)) -> dict:
     content = await file.read()
     try:
@@ -166,7 +167,7 @@ async def inventory_parse(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/inventory/demo")
+@app.get("/api/inventory/demo")
 def inventory_demo(name: str = "sample") -> dict:
     try:
         return _json_safe(parse_demo(name))
@@ -189,7 +190,7 @@ class InventoryAnalyzePayload(BaseModel):
     refresh: bool = False  # force a live refresh, ignoring cached pools
 
 
-@app.post("/inventory/analyze/stream")
+@app.post("/api/inventory/analyze/stream")
 def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
     # A persistent, cache-first market layer: fresh (source, brand, model) pools
     # are reused across runs with ZERO HTTP; misses/expiries fetch live and
@@ -218,7 +219,7 @@ def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingRespo
 # --------------------------------------------------------------------------- #
 # Single-car: synchronous
 # --------------------------------------------------------------------------- #
-@app.post("/compare")
+@app.post("/api/compare")
 def compare(payload: CarPayload) -> dict:
     result = compare_single_car(
         _to_input(payload), max_pages=payload.max_pages, delay=payload.delay
@@ -237,7 +238,7 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(_json_safe(payload), ensure_ascii=False)}\n\n"
 
 
-@app.post("/compare/stream")
+@app.post("/api/compare/stream")
 def compare_stream(payload: CarPayload) -> StreamingResponse:
     inp = _to_input(payload)
 
