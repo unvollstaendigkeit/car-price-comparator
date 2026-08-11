@@ -13,10 +13,13 @@ through unchanged):
   POST /api/parse-row          - parse a pasted Excel/Sheets/Markdown row -> fields
   POST /api/inventory/parse    - normalize+validate an uploaded inventory file
   GET  /api/inventory/demo     - normalize+validate a bundled demo inventory
+  POST /api/inventory/analyze/stream - batch market analysis as an SSE stream
   POST /api/compare            - single-car comparison (synchronous JSON)
   POST /api/compare/stream     - single-car comparison as an SSE progress stream
 
-The inventory routes do PARSING/VALIDATION ONLY — no marketplace scraping.
+/api/inventory/parse and /demo do PARSING/VALIDATION ONLY — no scraping.
+/api/inventory/analyze/stream DOES retrieve from the marketplaces, reusing the
+same engine + polite pacing as the single-car path (grouped per brand+model).
 """
 from __future__ import annotations
 
@@ -51,6 +54,7 @@ from inventory_api import (  # noqa: E402
     parse_demo,
     parse_upload,
 )
+from inventory_run import analyze_inventory  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -163,6 +167,38 @@ def inventory_demo(name: str = "sample") -> dict:
         return _json_safe(parse_demo(name))
     except InventoryReadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# --------------------------------------------------------------------------- #
+# Inventory batch market analysis — SSE progress stream.
+#
+# This DOES retrieve from the marketplaces, but grouped per (brand, model) with
+# a shared cache, progressive page depth, polite single-threaded pacing, and a
+# circuit breaker — so requests scale with unique models, not car count. Each
+# car is valued by the same shared engine as the single-car path.
+# --------------------------------------------------------------------------- #
+class InventoryAnalyzePayload(BaseModel):
+    rows: list[dict]
+    delay: float = 1.0
+    max_pages: int = 3
+
+
+@app.post("/api/inventory/analyze/stream")
+def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
+    def gen():
+        try:
+            for event in analyze_inventory(
+                payload.rows, delay=payload.delay, max_pages=payload.max_pages
+            ):
+                yield _sse(event)
+        except Exception as e:  # noqa: BLE001 - surface any engine error to the client
+            yield _sse({"stage": "error", "label": "Analysis failed", "message": str(e)})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --------------------------------------------------------------------------- #

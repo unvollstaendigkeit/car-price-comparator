@@ -1,4 +1,45 @@
-import type { CarInput, InventoryReport, ParsedRow, ProgressEvent } from './types'
+import type {
+  AnalysisEvent,
+  CarInput,
+  InventoryReport,
+  InventoryRow,
+  ParsedRow,
+  ProgressEvent,
+} from './types'
+
+/**
+ * Read an SSE response body and invoke `onEvent` for each `data:` frame as it
+ * arrives. Shared by every streaming endpoint so the parsing logic lives once.
+ */
+async function readSSE<T>(res: Response, onEvent: (e: T) => void): Promise<void> {
+  if (!res.ok || !res.body) {
+    throw new Error(await errorMessage(res, `Backend returned ${res.status}`))
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    // SSE frames are separated by a blank line.
+    const frames = buffer.split('\n\n')
+    buffer = frames.pop() ?? ''
+    for (const frame of frames) {
+      const line = frame.split('\n').find((l) => l.startsWith('data:'))
+      if (!line) continue
+      const json = line.slice(5).trim()
+      if (!json) continue
+      try {
+        onEvent(JSON.parse(json) as T)
+      } catch {
+        // ignore malformed frame; stream continues
+      }
+    }
+  }
+}
 
 /** Turn a non-2xx response into a readable message, preferring FastAPI's `detail`. */
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -71,33 +112,26 @@ export async function streamCompare(
     body: JSON.stringify(input),
     signal,
   })
+  await readSSE<ProgressEvent>(res, onEvent)
+}
 
-  if (!res.ok || !res.body) {
-    throw new Error(`Backend returned ${res.status}`)
-  }
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    // SSE frames are separated by a blank line.
-    const frames = buffer.split('\n\n')
-    buffer = frames.pop() ?? ''
-    for (const frame of frames) {
-      const line = frame.split('\n').find((l) => l.startsWith('data:'))
-      if (!line) continue
-      const json = line.slice(5).trim()
-      if (!json) continue
-      try {
-        onEvent(JSON.parse(json) as ProgressEvent)
-      } catch {
-        // ignore malformed frame; stream continues
-      }
-    }
-  }
+/**
+ * Stream a batch market analysis for a confirmed inventory. Unlike the parse
+ * endpoints this DOES retrieve from the marketplaces, but the backend groups
+ * cars per (brand, model) with a shared cache and polite pacing, so requests
+ * scale with unique models rather than car count. `onEvent` fires for every
+ * group/car/summary event as it happens.
+ */
+export async function streamInventoryAnalysis(
+  rows: InventoryRow[],
+  onEvent: (e: AnalysisEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch('/api/inventory/analyze/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+    signal,
+  })
+  await readSSE<AnalysisEvent>(res, onEvent)
 }

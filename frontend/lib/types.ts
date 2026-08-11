@@ -185,3 +185,79 @@ export interface InventoryReport {
   required_fields: string[]
   rows: InventoryRow[]
 }
+
+/* ---- inventory batch market analysis (backend inventory_run) ----
+ * DOES retrieve from the marketplaces, grouped per (brand, model). Autobazar
+ * and Bazoš are kept fully separate — never merged into one price.
+ * (ConfidenceFlag is defined above and reused here.) */
+export interface AnalysisSourceResult {
+  median_eur: number | null
+  price_diff_pct: number | null
+  comparable_count: number
+  tier: string | null
+  insufficient: boolean
+  example_links: string[]
+  error: string | null
+}
+
+export interface AnalysisCarResult {
+  row_index: number
+  row_number: number
+  brand: string
+  model: string
+  variant: string | null
+  year: number | null
+  km: number | null
+  fuel: string | null
+  power_kw: number | null
+  asking_price_eur: number | null
+  autobazar: AnalysisSourceResult
+  bazos: AnalysisSourceResult
+  median_spread_pct: number | null
+  ab_vs_bz_pct_gap: number | null
+  rank_source: string | null
+  rank_price_diff_pct: number | null
+  confidence_flag: ConfidenceFlag
+  confidence_reasons: string
+  missing_critical_fields: string
+}
+
+export interface AnalysisSummary {
+  counts: {
+    total_cars: number
+    analyzed: number
+    high: number
+    medium: number
+    low: number
+    insufficient: number
+  }
+  market_lookups: number
+  disabled_sources: string[]
+  ranked: AnalysisCarResult[]
+}
+
+/** Union of every event the /api/inventory/analyze/stream SSE emits. */
+export type AnalysisEvent =
+  | { stage: 'start'; total_cars: number; total_groups: number }
+  | {
+      stage: 'group_start'
+      group_index: number
+      group_total: number
+      brand: string
+      model: string
+      cars_in_group: number
+      cached: boolean
+    }
+  | {
+      stage: 'retrieved'
+      brand: string
+      model: string
+      ab_count: number
+      bz_count: number
+      ab_error: string | null
+      bz_error: string | null
+    }
+  | { stage: 'source_disabled'; source: string; reason: string }
+  | { stage: 'car_done'; analyzed: number; total: number; car: AnalysisCarResult }
+  | ({ stage: 'summary' } & AnalysisSummary)
+  | { stage: 'error'; label?: string; message: string }

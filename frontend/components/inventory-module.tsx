@@ -1,13 +1,14 @@
 "use client"
 
-import { useRef, useState } from "react"
-import type { InventoryReport } from "@/lib/types"
-import { loadInventoryDemo, parseInventory } from "@/lib/api"
+import { useEffect, useRef, useState } from "react"
+import type { AnalysisCarResult, AnalysisEvent, AnalysisSummary, InventoryReport, InventoryRow } from "@/lib/types"
+import { loadInventoryDemo, parseInventory, streamInventoryAnalysis } from "@/lib/api"
 import { cn } from "@/lib/format"
 import { Disclosure } from "@/components/disclosure"
 import { InventoryReviewTable } from "@/components/inventory-review-table"
+import { InventoryResultsTable } from "@/components/inventory-results-table"
 
-type Phase = "upload" | "review" | "ready"
+type Phase = "upload" | "review" | "ready" | "analyzing"
 
 const ACCEPT = ".csv,.xlsx,.xls"
 
@@ -53,8 +54,25 @@ export function InventoryModule() {
     if (inputRef.current) inputRef.current.value = ""
   }
 
+  if (phase === "analyzing" && report) {
+    return (
+      <AnalysisPanel
+        rows={report.rows.filter((r) => r.valid_for_comparison)}
+        onBack={() => setPhase("ready")}
+        onReset={reset}
+      />
+    )
+  }
+
   if (phase === "ready" && report) {
-    return <ReadyPanel report={report} onBack={() => setPhase("review")} onReset={reset} />
+    return (
+      <ReadyPanel
+        report={report}
+        onBack={() => setPhase("review")}
+        onReset={reset}
+        onRun={() => setPhase("analyzing")}
+      />
+    )
   }
 
   if (phase === "review" && report) {
@@ -296,10 +314,12 @@ function ReadyPanel({
   report,
   onBack,
   onReset,
+  onRun,
 }: {
   report: InventoryReport
   onBack: () => void
   onReset: () => void
+  onRun: () => void
 }) {
   const ready = report.counts.valid_for_comparison
   return (
@@ -312,8 +332,9 @@ function ReadyPanel({
       <div className="flex flex-col gap-1.5">
         <h2 className="text-2xl font-semibold text-foreground">Ready to analyze {ready} cars</h2>
         <p className="mx-auto max-w-md text-[15px] leading-relaxed text-muted">
-          Your inventory is normalized and validated. The next phase will value each car against Autobazar.eu and
-          Bazoš.sk — the same two-source comparison used in Single car mode. No searches have run yet.
+          Each car is valued against Autobazar.eu and Bazoš.sk — the same two-source comparison used in Single car
+          mode. Cars are grouped by make &amp; model, so shared searches keep requests low and the two sources stay
+          separate (never blended).
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -333,13 +354,226 @@ function ReadyPanel({
         </button>
         <button
           type="button"
-          disabled
-          title="Coming in the next phase"
-          className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground opacity-40"
+          onClick={onRun}
+          disabled={ready === 0}
+          className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Run market analysis (coming soon)
+          Run market analysis →
         </button>
       </div>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------------------- */
+/* Analysis (live SSE stream: retrieval grouped per make+model)                */
+/* --------------------------------------------------------------------------- */
+interface Progress {
+  analyzed: number
+  total: number
+  groupIndex: number
+  groupTotal: number
+  currentModel: string
+  cached: boolean
+  lookups: number
+}
+
+function AnalysisPanel({
+  rows,
+  onBack,
+  onReset,
+}: {
+  rows: InventoryRow[]
+  onBack: () => void
+  onReset: () => void
+}) {
+  const [status, setStatus] = useState<"running" | "done" | "error">("running")
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [progress, setProgress] = useState<Progress>({
+    analyzed: 0,
+    total: rows.length,
+    groupIndex: 0,
+    groupTotal: 0,
+    currentModel: "",
+    cached: false,
+    lookups: 0,
+  })
+  const [results, setResults] = useState<AnalysisCarResult[]>([])
+  const [summary, setSummary] = useState<AnalysisSummary | null>(null)
+  const [notices, setNotices] = useState<string[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let lookups = 0
+
+    streamInventoryAnalysis(
+      rows,
+      (e: AnalysisEvent) => {
+        switch (e.stage) {
+          case "start":
+            setProgress((p) => ({ ...p, total: e.total_cars, groupTotal: e.total_groups }))
+            break
+          case "group_start":
+            if (!e.cached) lookups += 2
+            setProgress((p) => ({
+              ...p,
+              groupIndex: e.group_index,
+              groupTotal: e.group_total,
+              currentModel: `${e.brand} ${e.model}`,
+              cached: e.cached,
+              lookups,
+            }))
+            break
+          case "source_disabled":
+            setNotices((n) => [...n, `${e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"}: ${e.reason}`])
+            break
+          case "car_done":
+            setResults((r) => [...r, e.car])
+            setProgress((p) => ({ ...p, analyzed: e.analyzed, total: e.total }))
+            break
+          case "summary":
+            setSummary({
+              counts: e.counts,
+              market_lookups: e.market_lookups,
+              disabled_sources: e.disabled_sources,
+              ranked: e.ranked,
+            })
+            setStatus("done")
+            break
+          case "error":
+            setErrorMsg(e.message)
+            setStatus("error")
+            break
+        }
+      },
+      controller.signal,
+    ).catch((err) => {
+      if (controller.signal.aborted) return
+      setErrorMsg(err instanceof Error ? err.message : "Analysis failed.")
+      setStatus("error")
+    })
+
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Ranked view: final order from the summary, or a live client-side sort while running.
+  const ranked =
+    summary?.ranked ??
+    [...results]
+      .filter((r) => r.rank_price_diff_pct !== null)
+      .sort((a, b) => (b.rank_price_diff_pct ?? 0) - (a.rank_price_diff_pct ?? 0))
+
+  const pct = progress.total > 0 ? Math.round((progress.analyzed / progress.total) * 100) : 0
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Progress / summary header */}
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5 md:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <p className="text-[13px] uppercase tracking-wide text-faint">
+              {status === "running" ? "Analyzing inventory" : status === "done" ? "Analysis complete" : "Analysis stopped"}
+            </p>
+            <h2 className="text-2xl font-semibold text-foreground">
+              {progress.analyzed} / {progress.total} cars valued
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {status !== "running" && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
+              >
+                Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
+            >
+              Start over
+            </button>
+          </div>
+        </div>
+
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+          <div
+            className={cn("h-full rounded-full transition-all", status === "error" ? "bg-danger" : "bg-accent")}
+            style={{ width: `${status === "done" ? 100 : pct}%` }}
+          />
+        </div>
+
+        {status === "running" && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
+            <span className="flex items-center gap-2">
+              <span className="block h-3 w-3 animate-spin rounded-full border border-accent border-t-transparent" aria-hidden />
+              {progress.cached ? "Reusing cached market for" : "Searching"}{" "}
+              <span className="text-foreground">{progress.currentModel || "…"}</span>
+            </span>
+            <span className="text-faint">
+              model {progress.groupIndex}/{progress.groupTotal}
+            </span>
+            <span className="text-faint">{progress.lookups} market lookups so far</span>
+          </div>
+        )}
+
+        {summary && (
+          <div className="flex flex-wrap gap-2">
+            <SummaryStat label="High" value={summary.counts.high} tone="positive" />
+            <SummaryStat label="Medium" value={summary.counts.medium} tone="accent" />
+            <SummaryStat label="Low" value={summary.counts.low} tone="caution" />
+            <SummaryStat label="Insufficient" value={summary.counts.insufficient} tone="muted" />
+            <SummaryStat label="Market lookups" value={summary.market_lookups} tone="muted" />
+          </div>
+        )}
+
+        {notices.map((n, i) => (
+          <p key={i} className="rounded-md border border-caution/40 bg-caution/10 px-3 py-2 text-[13px] text-caution">
+            {n}
+          </p>
+        ))}
+
+        {errorMsg && (
+          <div className="rounded-lg border border-danger/40 bg-danger-soft/30 px-4 py-3 text-sm text-danger">
+            {errorMsg}
+          </div>
+        )}
+      </div>
+
+      {ranked.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[13px] text-faint">Ranked most below market → least. Click a row for source details.</p>
+          <InventoryResultsTable cars={ranked} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SummaryStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: "positive" | "accent" | "caution" | "muted"
+}) {
+  const toneCls =
+    tone === "positive"
+      ? "text-positive"
+      : tone === "accent"
+        ? "text-accent"
+        : tone === "caution"
+          ? "text-caution"
+          : "text-muted"
+  return (
+    <div className="flex items-baseline gap-2 rounded-md border border-border bg-surface-2/50 px-3 py-2">
+      <span className={cn("font-mono text-lg font-semibold tabular-nums", toneCls)}>{value}</span>
+      <span className="text-[13px] text-faint">{label}</span>
     </div>
   )
 }
