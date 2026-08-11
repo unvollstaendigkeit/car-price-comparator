@@ -1,0 +1,6 @@
+Year,Type,Brand,Model,Variant,type,VIn,Colour,Km,Price,Pictures,Co2
+2021,Electric,Volvo,XC40,Recharge P8 AWD 300kW,SUV,YV1XZER8AN1234567,Black,"45,000","32,900",http://pics/1,0
+2020,Plug-in,Volvo,XC60,T8 Twin Engine 287HP,SUV,YV1UZK5AN7654321,Grey,"78,500","29,500",http://pics/2,55
+2019,Diesel,BMW,3 Series,2.0d xDrive 190HP Automatic,Sedan,WBA5A71090G123456,Blue,"120,000",SOLD,http://pics/3,120
+2018,Benzin,Volkswagen,Golf,1.5 TSI 150HP,Hatchback,WVWZZZ1KZAW112233,White,"95,300","14,200",http://pics/4,110
+2022,El,Tesla,Model 3,Long Range AWD,Sedan,5YJ3E1EA5NF445566,Red,"30,100","36,750",http://pics/5,0

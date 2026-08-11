@@ -37,6 +37,8 @@ from typing import Optional
 
 import pandas as pd
 
+from inventory_normalizer import normalize_inventory
+
 
 # --------------------------------------------------------------------------- #
 # Canonical fuel vocabulary (shared with the market normalizer).
@@ -230,47 +232,65 @@ class InventoryCar:
 
 
 def load_inventory(path: str, assumed_currency: str = "EUR") -> pd.DataFrame:
-    """Load the inventory CSV into the canonical normalized schema."""
-    raw = pd.read_csv(path, dtype=str)
-    # Normalize column names (strip leading/trailing spaces).
-    raw.columns = [c.strip() for c in raw.columns]
+    """
+    Load an inventory CSV into the canonical normalized schema used by the
+    comparison engine.
+
+    Header detection and value normalization (km/price/year/fuel/body, SOLD
+    handling, synonym mapping across differing column layouts) are delegated to
+    the standalone `inventory_normalizer` layer, so this loader works on ANY
+    reasonable column naming - not just the original Danish export. On top of
+    the canonical fields it derives the engine-specific attributes the matcher
+    needs (displacement, power in kW, transmission, engine badge) from the
+    free-text variant string.
+    """
+    report = normalize_inventory(path)
 
     cars: list[dict] = []
-    for i, row in raw.iterrows():
-        brand = _cell(row, "Brand")
-        model = _cell(row, "Model")
-        variant = _cell(row, "Variant") or ""
+    for _, r in report.rows.iterrows():
+        brand = _cell(r, "brand")
+        model = _cell(r, "model")
         if not (brand and model):
             continue  # skip blank / separator rows
 
-        year, ysrc = _year_from_registration(_cell(row, "Registratio"))
+        variant = _cell(r, "variant") or ""
         disp = _parse_displacement(variant) if variant else None
         power, psrc = _parse_power_kw(variant) if variant else (None, "missing")
         trans = _parse_transmission(variant) if variant else None
         engine = _parse_engine_badge(variant, disp) if variant else None
-        fuel_raw = _cell(row, "Fuel")
+
+        year = int(r["year"]) if pd.notna(r["year"]) else None
+        km = int(r["km"]) if pd.notna(r["km"]) else None
+        price = int(r["price"]) if pd.notna(r["price"]) else None
+
+        # Preserve SOLD/unavailable provenance for auditability: fold the price
+        # status into availability when the price is not a live number.
+        availability = _cell(r, "availability")
+        if r.get("status") and r["status"] != "active":
+            tag = f"price_{r['status']}"
+            availability = f"{availability} | {tag}" if availability else tag
 
         cars.append(
             InventoryCar(
-                row_index=int(i),
+                row_index=int(r["row_index"]),
                 brand=brand,
                 model=model,
                 variant_raw=variant or None,
                 variant_engine=engine,
                 displacement_l=disp,
-                fuel=_norm_fuel(fuel_raw),
-                fuel_raw=fuel_raw,
+                fuel=_cell(r, "fuel"),
+                fuel_raw=_cell(r, "fuel_original"),
                 year=year,
                 power_kw=power,
                 transmission=trans,
-                body_type=_norm_body(_cell(row, "Kar.")),
-                km=_clean_int(_cell(row, "Km")),
-                price=_clean_int(_cell(row, "Price")),
+                body_type=_cell(r, "body_type"),
+                km=km,
+                price=price,
                 price_currency_assumed=assumed_currency,
-                vin=_cell(row, "Vin"),
-                colour=_cell(row, "Colour"),
-                availability=_cell(row, "Good to go"),
-                year_source=ysrc,
+                vin=_cell(r, "vin"),
+                colour=_cell(r, "colour"),
+                availability=availability,
+                year_source=_cell(r, "year_source") or "",
                 power_source=psrc,
             ).as_row()
         )
