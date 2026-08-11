@@ -1,0 +1,3 @@
+row_index,brand,model,fuel,year,inventory_price_eur,ab_comparable_count,bz_comparable_count,missing_critical_fields,confidence_flag,confidence_reasons,ab_retrieval_error,bz_retrieval_error
+41,Dacia,Duster,Petrol,2024,17600,2,1,none,INSUFFICIENT,"no source reaches 4 comparables (AB n=2, BZ n=1)",,
+21,Renault,Mégane,PHEV,2020,11500,0,1,none,INSUFFICIENT,"no source reaches 4 comparables (AB n=0, BZ n=1)",,

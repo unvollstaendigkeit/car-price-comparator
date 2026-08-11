@@ -1,0 +1,43 @@
+
+======================================================================
+DIAGNOSTIC SUMMARY
+======================================================================
+Total inventory cars processed : 10
+
+Confidence flags:
+  HIGH        : 2
+  MEDIUM      : 3
+  LOW         : 3
+  INSUFFICIENT: 2
+
+Source coverage (>=1 comparable):
+  Autobazar data : 9/10
+  Bazos data     : 10/10
+  BOTH sources   : 9/10
+Source coverage (>=4 usable comparables):
+  Autobazar usable: 6/10
+  Bazos usable    : 6/10
+
+Significant cross-source disagreement (>30% median spread): 2
+
+Models most frequently producing INSUFFICIENT samples:
+   1x  Dacia Duster
+   1x  Renault Mégane
+
+Models with retrieval failure (no listings from either source):
+  (none)
+
+======================================================================
+RANKED - most below market (top 15)
+======================================================================
+ row_index   brand    model  year  inventory_price_eur  ab_price_diff_pct  bz_price_diff_pct rank_source  rank_price_diff_pct confidence_flag
+        57      VW   Passat  2006                  900               63.9               93.8   autobazar                 63.9          MEDIUM
+        77      VW     ID.3  2021                 9000               48.6               44.4   autobazar                 48.6            HIGH
+         6  Toyota    Auris  2015                 7200               43.8               16.8   autobazar                 43.8             LOW
+         4  Toyota     Rav4  2019                17000               43.3               36.8   autobazar                 43.3          MEDIUM
+        21 Renault   Mégane  2020                11500                NaN               28.1       bazos                 28.1    INSUFFICIENT
+        61     Kia Sportage  2019                11800               24.8                1.7   autobazar                 24.8          MEDIUM
+        14     BMW       X1  2018                11500               30.5               23.6       bazos                 23.6             LOW
+         3   Honda     Jazz  2017                 6000               13.0               22.0       bazos                 22.0             LOW
+         0 Hyundai      I30  2023                11600                9.0               -5.6   autobazar                  9.0            HIGH
+        41   Dacia   Duster  2024                17600              -16.6               -0.6   autobazar                -16.6    INSUFFICIENT
