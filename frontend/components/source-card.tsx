@@ -1,7 +1,7 @@
 "use client"
 
 import type { SourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtPct, fmtSignedEur, tierLabel, valuationTone } from "@/lib/format"
+import { cn, fmtEur, fmtPct, fmtPctPlain, tierLabel, valuationTone } from "@/lib/format"
 import { ComparablesTable } from "./comparables-table"
 import { Disclosure } from "./disclosure"
 
@@ -10,7 +10,15 @@ const SOURCE_META: Record<string, { name: string; host: string }> = {
   bazos: { name: "Bazoš.sk", host: "bazos.sk" },
 }
 
-export function SourceCard({ sourceKey, data }: { sourceKey: string; data: SourceResult }) {
+export function SourceCard({
+  sourceKey,
+  data,
+  askingPriceEur,
+}: {
+  sourceKey: string
+  data: SourceResult
+  askingPriceEur?: number | null
+}) {
   const meta = SOURCE_META[sourceKey] ?? { name: sourceKey, host: "" }
   const hasRetrievalError = Boolean(data.retrieval_error)
   // Only a genuinely empty result gets the placeholder. Any listing at all is
@@ -20,8 +28,15 @@ export function SourceCard({ sourceKey, data }: { sourceKey: string; data: Sourc
 
   const pct = data.undervaluation_pct
   const tone = valuationTone(pct)
-  const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-foreground"
+  const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-muted"
   const toneLabel = tone === "positive" ? "below market" : tone === "negative" ? "above market" : "at market"
+  // Median relative to the user's asking price. Below market => median sits
+  // above asking; above market => median sits below asking. Uses existing
+  // values only (magnitude + tone-derived direction), no recalculation.
+  const diffAbs = data.price_difference_eur !== null && data.price_difference_eur !== undefined
+    ? Math.abs(data.price_difference_eur)
+    : null
+  const diffDir = tone === "positive" ? "above your asking price" : tone === "negative" ? "below your asking price" : "vs. your asking price"
 
   return (
     <section className="flex flex-col rounded-lg border border-border bg-surface" aria-label={`${meta.name} result`}>
@@ -61,37 +76,28 @@ export function SourceCard({ sourceKey, data }: { sourceKey: string; data: Sourc
         </div>
       ) : (
         <>
-          {/* Hero: the key market-position number */}
-          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 px-5 py-5">
-            {pct !== null && pct !== undefined ? (
-              <div className="flex flex-col">
-                <span className={cn("font-mono text-4xl font-semibold leading-none tabular-nums", toneCls)}>
-                  {fmtPct(pct)}
+          {/* Hero: the median asking price is the centerpiece */}
+          <div className="px-5 py-5">
+            <p className="text-[13px] uppercase tracking-wide text-faint">Median asking price</p>
+            <p className="mt-1 font-mono text-4xl font-semibold leading-none tabular-nums text-foreground">
+              {fmtEur(data.median_asking_eur)}
+            </p>
+
+            {pct !== null && pct !== undefined && (
+              <div className="mt-3 flex flex-col gap-0.5">
+                {diffAbs !== null && (
+                  <span className={cn("text-[15px] font-medium", toneCls)}>
+                    {fmtEur(diffAbs)} {diffDir}
+                  </span>
+                )}
+                <span className="text-[13px] text-muted">
+                  <span className={toneCls}>{fmtPctPlain(pct)} {toneLabel}</span>
+                  {askingPriceEur !== null && askingPriceEur !== undefined && (
+                    <span className="text-faint"> · your asking {fmtEur(askingPriceEur)}</span>
+                  )}
                 </span>
-                <span className={cn("mt-1.5 text-sm font-medium", toneCls)}>{toneLabel}</span>
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                <span className="font-mono text-3xl font-semibold leading-none tabular-nums text-foreground">
-                  {fmtEur(data.median_asking_eur)}
-                </span>
-                <span className="mt-1.5 text-sm text-faint">market median</span>
               </div>
             )}
-
-            <div className="flex flex-col items-end text-right">
-              {pct !== null && pct !== undefined && (
-                <span className="font-mono text-lg tabular-nums text-foreground">
-                  {fmtEur(data.median_asking_eur)}
-                </span>
-              )}
-              <span className="text-[13px] text-faint">median asking price</span>
-              {data.price_difference_eur !== null && data.price_difference_eur !== undefined && (
-                <span className="mt-0.5 font-mono text-[13px] tabular-nums text-muted">
-                  {fmtSignedEur(data.price_difference_eur)} vs. asking
-                </span>
-              )}
-            </div>
           </div>
 
           {/* Concise sample caution */}

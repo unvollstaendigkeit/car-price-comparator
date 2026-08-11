@@ -35,12 +35,14 @@ const empty: CarInput = {
 
 export function CarForm({
   onSubmit,
+  onClear,
   busy,
 }: {
   onSubmit: (input: CarInput) => void
+  onClear?: () => void
   busy: boolean
 }) {
-  const [mode, setMode] = useState<"manual" | "paste">("manual")
+  const [mode, setMode] = useState<"manual" | "paste">("paste")
   const [form, setForm] = useState<CarInput>(empty)
 
   // paste-row state
@@ -94,6 +96,24 @@ export function CarForm({
     }
   }
 
+  // Reset everything back to the initial input state (paste mode, empty form),
+  // and ask the parent to drop any current comparison results. No page reload.
+  const handleClear = () => {
+    setForm(empty)
+    setDetected({})
+    setExtras({})
+    setIssues([])
+    setParseMode(null)
+    setParseError(null)
+    setPasteText("")
+    setMode("paste")
+    onClear?.()
+  }
+
+  const hasInput =
+    pasteText.trim() !== "" ||
+    Object.values(form).some((v) => v !== "" && v !== undefined)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!canSubmit) return
@@ -132,11 +152,11 @@ export function CarForm({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <h2 className="text-lg font-semibold text-foreground">Vehicle details</h2>
         <div className="inline-flex rounded-md border border-border p-0.5">
-          <ModeTab active={mode === "manual"} onClick={() => setMode("manual")}>
-            Manual entry
-          </ModeTab>
           <ModeTab active={mode === "paste"} onClick={() => setMode("paste")}>
             Paste a row
+          </ModeTab>
+          <ModeTab active={mode === "manual"} onClick={() => setMode("manual")}>
+            Manual entry
           </ModeTab>
         </div>
       </div>
@@ -328,13 +348,23 @@ export function CarForm({
         <p className="text-[13px] text-faint">
           Brand and model are required. The more fields you provide, the tighter the comparable match.
         </p>
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="shrink-0 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {busy ? "Comparing…" : "Compare prices"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={busy || !hasInput}
+            className="rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? "Comparing…" : "Compare prices"}
+          </button>
+        </div>
       </div>
     </form>
   )

@@ -22,6 +22,16 @@ export function fmtPct(v: number | null | undefined, digits = 1): string {
   return `${sign}${Math.abs(v).toFixed(digits)}%`
 }
 
+/**
+ * Magnitude-only percentage, no +/− sign. Used where accompanying words
+ * ("below market" / "above market") already convey direction, so a sign would
+ * be redundant and confusing.
+ */
+export function fmtPctPlain(v: number | null | undefined, digits = 1): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "—"
+  return `${Math.abs(v).toFixed(digits)}%`
+}
+
 export function fmtKm(v: number | null | undefined): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—"
   return `${Math.round(v).toLocaleString("en-US")} km`

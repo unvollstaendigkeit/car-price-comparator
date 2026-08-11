@@ -1,7 +1,7 @@
 "use client"
 
 import type { CompareResult, SourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtKm, fmtPct, fmtYear, valuationTone } from "@/lib/format"
+import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, valuationTone } from "@/lib/format"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
 import { Disclosure } from "./disclosure"
@@ -43,8 +43,16 @@ export function SingleCarResult({ result }: { result: CompareResult }) {
   const primaryLabel = primaryKey ? SOURCE_LABELS[primaryKey] ?? primaryKey : null
 
   const tone = valuationTone(primaryPct)
-  const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-foreground"
+  const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-muted"
   const toneLabel = tone === "positive" ? "below market" : tone === "negative" ? "above market" : "at market"
+  // Euro gap between the market median and the user's asking price, framed by
+  // direction. Display-only: uses existing values, no recalculation.
+  const primaryDiffAbs =
+    primaryData && primaryData.price_difference_eur !== null && primaryData.price_difference_eur !== undefined
+      ? Math.abs(primaryData.price_difference_eur)
+      : null
+  const diffDir =
+    tone === "positive" ? "above your asking price" : tone === "negative" ? "below your asking price" : "vs. your asking price"
 
   // Human one-liner about evidence coverage (derived from existing flags only).
   const abUsable = isUsable(sources.autobazar)
@@ -84,20 +92,28 @@ export function SingleCarResult({ result }: { result: CompareResult }) {
       {/* 2 — The key market-position result */}
       <section className="rounded-lg border border-border bg-surface">
         <div className="px-5 pb-5 pt-4">
-          <p className="text-[13px] uppercase tracking-wide text-faint">Market position</p>
+          <p className="text-[13px] uppercase tracking-wide text-faint">
+            What this car is worth{primaryLabel ? ` · via ${primaryLabel}` : ""}
+          </p>
           {primaryData && primaryPct !== null && primaryPct !== undefined ? (
-            <div className="mt-2 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
-              <div className="flex flex-col">
-                <span className={cn("font-mono text-5xl font-semibold leading-none tabular-nums", toneCls)}>
-                  {fmtPct(primaryPct)}
+            <div className="mt-2">
+              <p className="font-mono text-5xl font-semibold leading-none tabular-nums text-foreground">
+                {fmtEur(primaryData.median_asking_eur)}
+              </p>
+              <p className="mt-1.5 text-sm text-faint">Median asking price on the market</p>
+
+              <div className="mt-4 flex flex-col gap-1">
+                {primaryDiffAbs !== null && (
+                  <span className={cn("text-lg font-medium", toneCls)}>
+                    {fmtEur(primaryDiffAbs)} {diffDir}
+                  </span>
+                )}
+                <span className="text-sm text-muted">
+                  <span className={toneCls}>
+                    {fmtPctPlain(primaryPct)} {toneLabel}
+                  </span>
+                  <span className="text-faint"> · your asking price {fmtEur(car.asking_price_eur)}</span>
                 </span>
-                <span className={cn("mt-2 text-[15px] font-medium", toneCls)}>{toneLabel}</span>
-              </div>
-              <div className="text-right">
-                <p className="font-mono text-xl tabular-nums text-foreground">
-                  {fmtEur(primaryData.median_asking_eur)}
-                </p>
-                <p className="text-[13px] text-faint">median asking price · via {primaryLabel}</p>
               </div>
             </div>
           ) : (
@@ -113,7 +129,7 @@ export function SingleCarResult({ result }: { result: CompareResult }) {
           <span className="text-sm text-muted">{coverage}</span>
           {agreement && cross_source.median_spread_pct !== null && (
             <span className={cn("text-sm", agreement.cls)}>
-              · {agreement.label} ({fmtPct(cross_source.median_spread_pct, 0)} spread)
+              · {agreement.label} ({fmtPctPlain(cross_source.median_spread_pct, 0)} spread)
             </span>
           )}
         </div>
@@ -144,17 +160,17 @@ export function SingleCarResult({ result }: { result: CompareResult }) {
 
       {/* 4 & 5 — The two independent sources, side by side, NEVER merged */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <SourceCard sourceKey="autobazar" data={sources.autobazar} />
-        <SourceCard sourceKey="bazos" data={sources.bazos} />
+        <SourceCard sourceKey="autobazar" data={sources.autobazar} askingPriceEur={car.asking_price_eur} />
+        <SourceCard sourceKey="bazos" data={sources.bazos} askingPriceEur={car.asking_price_eur} />
       </div>
 
       {/* 7 — Methodology, out of the primary hierarchy */}
       <Disclosure summary="How Carval calculates this" className="px-1">
         <p className="max-w-2xl text-[13px] leading-relaxed text-faint">
           Each marketplace is evaluated independently and shown separately — Carval never blends them into a single
-          number. Percentages are relative to your asking price: a positive figure means the car is priced below
-          that market&apos;s median (a potential find), negative means above it. The headline market position uses
-          the marketplace with the stronger comparable sample.
+          number. &quot;Below market&quot; means the car is priced under that market&apos;s median asking price (a
+          potential find); &quot;above market&quot; means it&apos;s priced higher. The headline figure uses the
+          marketplace with the stronger comparable sample.
         </p>
       </Disclosure>
     </div>

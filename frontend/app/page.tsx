@@ -16,6 +16,14 @@ export default function Page() {
 
   const busy = stage !== null && stage !== "result" && stage !== "error"
 
+  function handleClear() {
+    abortRef.current?.abort()
+    setResult(null)
+    setError(null)
+    setCounts({})
+    setStage(null)
+  }
+
   async function runCompare(input: CarInput) {
     setResult(null)
     setError(null)
@@ -59,7 +67,7 @@ export default function Page() {
       </header>
 
       <div className="flex flex-col gap-7">
-        <CarForm onSubmit={runCompare} busy={busy} />
+        <CarForm onSubmit={runCompare} onClear={handleClear} busy={busy} />
 
         {busy && stage && <ProgressStream current={stage} counts={counts} />}
 
