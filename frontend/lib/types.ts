@@ -265,6 +265,9 @@ export interface AnalysisSummary {
   errors?: Record<string, number>
   timeouts_total?: number
   errors_total?: number
+  /** Models that hit the whole-model wall-clock budget (safety net firing). */
+  model_timeouts?: number
+  model_budget_s?: number
   ranked: AnalysisCarResult[]
   benchmark?: {
     total_cars: number
@@ -280,6 +283,7 @@ export interface AnalysisSummary {
     avg_http_time_s?: number
     timeouts_total?: number
     errors_total?: number
+    model_timeouts?: number
     mode: string
   }
 }
@@ -324,6 +328,16 @@ export type AnalysisEvent =
       brand: string
       model: string
       kept: number
+      reason: string
+    }
+  | {
+      stage: 'group_timeout'
+      brand: string
+      model: string
+      budget_s: number
+      elapsed_s: number
+      ab_kept: number
+      bz_kept: number
       reason: string
     }
   | { stage: 'source_disabled'; source: string; reason: string }

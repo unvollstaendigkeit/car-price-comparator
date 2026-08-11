@@ -64,7 +64,7 @@ def test_bazos_timeout_keeps_partial_rows(monkeypatch):
     page1_html = "<page1>"
     calls = {"n": 0}
 
-    def fake_fetch(url, brand="", model="", page=0):
+    def fake_fetch(url, brand="", model="", page=0, deadline=None):
         calls["n"] += 1
         if page >= 2:
             raise p6.bz.FetchTimeout("deadline 8.0s exceeded")
@@ -88,7 +88,7 @@ def test_bazos_timeout_keeps_partial_rows(monkeypatch):
 
 
 def test_autobazar_timeout_is_non_block(monkeypatch):
-    def fake_fetch(url, brand="", model="", page=0):
+    def fake_fetch(url, brand="", model="", page=0, deadline=None):
         raise p6.ab.FetchTimeout("deadline exceeded")
 
     monkeypatch.setattr(p6.ab, "fetch", fake_fetch)
@@ -118,7 +118,7 @@ class _FakeProvider:
     def __init__(self):
         self.calls = 0
 
-    def retrieve(self, source, car, pages):
+    def retrieve(self, source, car, pages, deadline=None):
         self.calls += 1
         if source == "autobazar":
             df = pd.DataFrame([{
@@ -170,6 +170,86 @@ def test_run_continues_through_timeouts_and_reports_them():
     # Fake provider fabricates http_requests without touching the transport, so
     # the real measured counter stays 0 here (validated live below, not in unit).
     assert b["http_requests_measured"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# 5. Per-model TIME BUDGET: one pathological model cannot block the whole run
+# --------------------------------------------------------------------------- #
+def test_wrapper_skips_network_when_budget_already_spent(monkeypatch):
+    """A deadline already in the past -> the page loop makes ZERO network calls
+    and returns a non-block budget-timeout note. This is what stops a model from
+    stacking more sequential GETs once its budget is gone."""
+    called = {"n": 0}
+
+    def fake_fetch(url, brand="", model="", page=0, deadline=None):
+        called["n"] += 1
+        return "<html>"
+
+    monkeypatch.setattr(p6.bz, "fetch", fake_fetch)
+    past = time.perf_counter() - 1.0  # budget already exhausted
+    df, note = p6.retrieve_bazos(_car(), max_pages=3, delay=0.0, deadline=past)
+    assert called["n"] == 0, "no page GET may happen once the budget is spent"
+    assert df.empty
+    assert note and "TIMEOUT" in note and "budget" in note.lower()
+
+
+class _BudgetProvider:
+    """Simulates ONE pathological slow model (Golf) whose first fetch overruns
+    the tiny per-model budget, while every other model is instant. Proves the
+    budget is per-model (fresh each group) and that the slow model is abandoned
+    without stalling the rest of the run."""
+    def __init__(self, slow_model="golf", slow_sleep=0.5):
+        self.slow_model = slow_model
+        self.slow_sleep = slow_sleep
+        self.calls: list[tuple[str, str]] = []
+
+    def retrieve(self, source, car, pages, deadline=None):
+        self.calls.append((car.model.lower(), source))
+        if car.model.lower() == self.slow_model and source == "autobazar":
+            time.sleep(self.slow_sleep)  # push wall-clock past the budget
+        df = pd.DataFrame([{
+            "url": f"http://{source}/{car.model}/{i}", "price_eur": 8000 + i * 100,
+            "year": 2016, "km": 150000, "title": f"{car.brand} {car.model}",
+            "source": source,
+        } for i in range(6)])
+        return RetrieveResult(df=df, err="", elapsed_s=0.1, http_requests=2)
+
+
+def test_model_over_budget_does_not_block_the_run():
+    prov = _BudgetProvider(slow_model="golf", slow_sleep=0.5)
+    t0 = time.perf_counter()
+    events = list(inv.analyze_inventory(_rows(), provider=prov, model_budget_s=0.3))
+    wall = time.perf_counter() - t0
+    stages = [e["stage"] for e in events]
+
+    # The slow model tripped its whole-model budget exactly once.
+    gts = [e for e in events if e["stage"] == "group_timeout"]
+    assert len(gts) == 1, f"expected 1 group_timeout, got {len(gts)}"
+    assert gts[0]["model"].lower() == "golf"
+
+    # Once the budget was spent, the second source was SKIPPED (never called).
+    assert ("golf", "bazos") not in prov.calls, "bazos must be skipped after budget spent"
+    # The fast model was fully retrieved from BOTH sources.
+    assert ("octavia", "autobazar") in prov.calls
+    assert ("octavia", "bazos") in prov.calls
+
+    # Crucially: every car is still valued and the run completes.
+    summary = next(e for e in events if e["stage"] == "summary")
+    assert summary["counts"]["analyzed"] == 2
+    assert summary["model_timeouts"] == 1
+    assert summary["disabled_sources"] == []      # a budget overrun is not a block
+
+    # The whole run stayed bounded (~slow_sleep), nowhere near a hang.
+    assert wall < 5.0, f"run should stay bounded, took {wall:.2f}s"
+
+
+def test_each_model_gets_a_fresh_budget():
+    """A slow first model must not eat into the second model's budget."""
+    prov = _BudgetProvider(slow_model="golf", slow_sleep=0.5)
+    events = list(inv.analyze_inventory(_rows(), provider=prov, model_budget_s=0.3))
+    # Octavia (fast) completed with no timeout note on either source.
+    retr = [e for e in events if e["stage"] == "retrieved" and e["model"].lower() == "octavia"]
+    assert retr and not retr[0]["ab_timed_out"] and not retr[0]["bz_timed_out"]
 
 
 class _MonkeyPatch:

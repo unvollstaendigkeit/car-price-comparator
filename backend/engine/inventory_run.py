@@ -309,9 +309,16 @@ def analyze_inventory(
 
         newly_disabled: list[str] = []
 
+        # Hard per-model wall-clock budget: the initial fetches, the fallbacks
+        # inside them, AND the progressive deepening below all share this single
+        # deadline, so this (brand, model) group as a whole can never run past it
+        # no matter how many sequential GETs it stacks.
+        group_t0 = time.perf_counter()
+        deadline = group_t0 + model_budget_s
+
         http_before = http_requests
-        ab_res = fetch("autobazar", rep_car, start_pages)
-        bz_res = fetch("bazos", rep_car, start_pages)
+        ab_res = fetch("autobazar", rep_car, start_pages, deadline)
+        bz_res = fetch("bazos", rep_car, start_pages, deadline)
         if http_requests == http_before:
             cached_groups += 1  # served entirely from cache (0 HTTP)
         entry = {
@@ -356,6 +363,25 @@ def analyze_inventory(
                     "reason": "request exceeded its time limit; kept partial results and continued",
                 }
 
+        # Whole-model budget overrun: distinct from a one-off slow page. Reported
+        # once per model so the UI can show "TIME BUDGET EXCEEDED"; retrieval is
+        # abandoned for this model (no deepening below) but partial data is kept
+        # and every car in the group is still valued with whatever we have.
+        group_budget_exceeded = _is_budget_timeout(ab_res.err) or _is_budget_timeout(bz_res.err)
+        if group_budget_exceeded:
+            model_timeouts += 1
+            yield {
+                "stage": "group_timeout",
+                "brand": rep_car.brand,
+                "model": rep_car.model,
+                "budget_s": round(model_budget_s, 1),
+                "elapsed_s": round(time.perf_counter() - group_t0, 2),
+                "ab_kept": int(len(ab_res.df)),
+                "bz_kept": int(len(bz_res.df)),
+                "reason": (f"retrieval for this model exceeded its {model_budget_s:.0f}s "
+                           f"time budget; kept partial results and moved on"),
+            }
+
         for source in newly_disabled:
             yield {
                 "stage": "source_disabled",
@@ -376,7 +402,11 @@ def analyze_inventory(
                 ab_est["comparable_count"] < MIN_USABLE
                 or bz_est["comparable_count"] < MIN_USABLE
             )
-            if need_deeper:
+            # Never deepen once the model's time budget is spent — that would
+            # start fresh GETs that are guaranteed to overshoot. Also skip if the
+            # budget has since run out mid-group.
+            budget_left = time.perf_counter() < deadline
+            if need_deeper and not group_budget_exceeded and budget_left:
                 deepened = False
                 if (
                     ab_est["comparable_count"] < MIN_USABLE
@@ -385,9 +415,14 @@ def analyze_inventory(
                     and "autobazar" not in disabled
                     and len(entry["ab_df"]) >= DEEPEN_RAW_HINT
                 ):
-                    ab_res = fetch("autobazar", car, max_pages)
-                    if not _is_block(ab_res.err):
-                        entry["ab_df"], entry["ab_err"], entry["ab_depth"] = ab_res.df, ab_res.err, max_pages
+                    ab_deep = fetch("autobazar", car, max_pages, deadline)
+                    # Only adopt the deeper pool if it is a clean, richer result.
+                    # A block or a budget/timeout that returned FEWER rows must not
+                    # clobber the good shallow pool we already have.
+                    if not _is_block(ab_deep.err) and not (
+                        _is_timeout(ab_deep.err) and len(ab_deep.df) < len(entry["ab_df"])
+                    ):
+                        entry["ab_df"], entry["ab_err"], entry["ab_depth"] = ab_deep.df, ab_deep.err, max_pages
                         deepened = True
                 if (
                     bz_est["comparable_count"] < MIN_USABLE
@@ -395,10 +430,13 @@ def analyze_inventory(
                     and not _is_block(entry["bz_err"])
                     and "bazos" not in disabled
                     and len(entry["bz_df"]) >= DEEPEN_RAW_HINT
+                    and time.perf_counter() < deadline
                 ):
-                    bz_res = fetch("bazos", car, max_pages)
-                    if not _is_block(bz_res.err):
-                        entry["bz_df"], entry["bz_err"], entry["bz_depth"] = bz_res.df, bz_res.err, max_pages
+                    bz_deep = fetch("bazos", car, max_pages, deadline)
+                    if not _is_block(bz_deep.err) and not (
+                        _is_timeout(bz_deep.err) and len(bz_deep.df) < len(entry["bz_df"])
+                    ):
+                        entry["bz_df"], entry["bz_err"], entry["bz_depth"] = bz_deep.df, bz_deep.err, max_pages
                         deepened = True
                 if deepened:
                     engine_row, ab_est, bz_est, *_ = timed_evaluate(
@@ -443,6 +481,9 @@ def analyze_inventory(
         "errors": dict(errors),
         "timeouts_total": sum(timeouts.values()),
         "errors_total": sum(errors.values()),
+        # Models that hit the whole-model time budget (the safety net firing).
+        "model_timeouts": model_timeouts,
+        "model_budget_s": round(model_budget_s, 1),
         # --- benchmark: how much runtime is retrieval vs. valuation? --------- #
         "benchmark": {
             "total_cars": total_cars,
@@ -460,6 +501,7 @@ def analyze_inventory(
             "avg_http_time_s": round(retrieval_time_s / http_requests, 4) if http_requests else 0.0,
             "timeouts_total": sum(timeouts.values()),
             "errors_total": sum(errors.values()),
+            "model_timeouts": model_timeouts,
             "mode": "cache-only" if http_requests == 0 else "live",
         },
         "ranked": ranked,

@@ -409,6 +409,10 @@ interface Progress {
   cached: boolean
   lookups: number
   timeouts: number
+  /** Whole-model budget overruns (the safety net firing). */
+  modelTimeouts: number
+  /** epoch ms when the current model's retrieval began (drives the live timer). */
+  modelStartedAt: number | null
 }
 
 interface CacheLogEntry {
@@ -424,6 +428,11 @@ function fmtSecs(s: number): string {
   const m = Math.floor(s / 60)
   return `${m}m ${Math.round(s % 60)}s`
 }
+
+// Mirrors MODEL_BUDGET_S in backend/engine/inventory_run.py. Used only to colour
+// the live per-model timer as it approaches the budget; the backend is the real
+// enforcer, so a small drift here is purely cosmetic.
+const MODEL_BUDGET_S = 90
 
 function formatAge(ageS: number | null): string {
   if (ageS == null) return ""
@@ -459,11 +468,16 @@ function AnalysisPanel({
     cached: false,
     lookups: 0,
     timeouts: 0,
+    modelTimeouts: 0,
+    modelStartedAt: null,
   })
   const [results, setResults] = useState<AnalysisCarResult[]>([])
   const [summary, setSummary] = useState<AnalysisSummary | null>(null)
   const [notices, setNotices] = useState<string[]>([])
   const [cacheLog, setCacheLog] = useState<CacheLogEntry[]>([])
+  // Ticks once a second while a live model is being retrieved, to drive the
+  // per-model elapsed timer (so a slow model visibly counts up toward its budget).
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -490,6 +504,8 @@ function AnalysisPanel({
               currentModel: `${e.brand} ${e.model}`,
               cached: e.cached,
               lookups,
+              // Live retrieval drives the per-model timer; cached models are instant.
+              modelStartedAt: e.cached ? null : Date.now(),
             }))
             setCacheLog((log) => [...log, { model: `${e.brand} ${e.model}`, cached: e.cached, ageS }])
             break
@@ -499,6 +515,18 @@ function AnalysisPanel({
             const kept = e.kept > 0 ? ` (kept ${e.kept} partial listing${e.kept === 1 ? "" : "s"})` : ""
             setNotices((n) => [...n, `${src} timed out on ${e.brand} ${e.model} — continuing${kept}.`])
             setProgress((p) => ({ ...p, timeouts: p.timeouts + 1 }))
+            break
+          }
+          case "group_timeout": {
+            const kept = e.ab_kept + e.bz_kept
+            const keptTxt = kept > 0 ? ` Kept ${kept} partial listing${kept === 1 ? "" : "s"}.` : ""
+            setNotices((n) => [
+              ...n,
+              `${e.brand} ${e.model}: TIME BUDGET EXCEEDED (${Math.round(e.elapsed_s)}s of ${Math.round(
+                e.budget_s,
+              )}s) — moved on so the run keeps going.${keptTxt}`,
+            ])
+            setProgress((p) => ({ ...p, modelTimeouts: p.modelTimeouts + 1 }))
             break
           }
           case "source_disabled":
@@ -513,6 +541,12 @@ function AnalysisPanel({
               counts: e.counts,
               market_lookups: e.market_lookups,
               disabled_sources: e.disabled_sources,
+              timeouts: e.timeouts,
+              errors: e.errors,
+              timeouts_total: e.timeouts_total,
+              errors_total: e.errors_total,
+              model_timeouts: e.model_timeouts,
+              model_budget_s: e.model_budget_s,
               ranked: e.ranked,
               benchmark: e.benchmark,
             })
@@ -535,6 +569,14 @@ function AnalysisPanel({
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Drive the live per-model timer: tick once a second only while actively
+  // retrieving a live model, so we don't re-render needlessly otherwise.
+  useEffect(() => {
+    if (status !== "running" || progress.modelStartedAt == null) return
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [status, progress.modelStartedAt])
 
   // Ranked view: final order from the summary, or a live client-side sort while running.
   const ranked =
@@ -616,6 +658,21 @@ function AnalysisPanel({
             <span className="text-faint">
               model {progress.groupIndex}/{progress.groupTotal}
             </span>
+            {/* Live per-model elapsed timer: counts up while a live model is
+                being retrieved and turns caution as it nears the time budget. */}
+            {progress.modelStartedAt != null &&
+              (() => {
+                const elapsed = Math.max(0, (nowMs - progress.modelStartedAt) / 1000)
+                const near = elapsed >= MODEL_BUDGET_S * 0.75
+                return (
+                  <span
+                    className={cn("tabular-nums", near ? "text-caution" : "text-faint")}
+                    title={`Per-model time budget: ${MODEL_BUDGET_S}s`}
+                  >
+                    {fmtSecs(elapsed)} / {MODEL_BUDGET_S}s
+                  </span>
+                )
+              })()}
             <span className="text-faint">
               {cachedModels} cached · {liveModels} live · {progress.lookups} live lookups
             </span>
@@ -623,6 +680,12 @@ function AnalysisPanel({
               <span className="flex items-center gap-1.5 text-caution">
                 <span className="block h-1.5 w-1.5 rounded-full bg-caution" aria-hidden />
                 {progress.timeouts} timeout{progress.timeouts === 1 ? "" : "s"} — continuing
+              </span>
+            )}
+            {progress.modelTimeouts > 0 && (
+              <span className="flex items-center gap-1.5 text-danger">
+                <span className="block h-1.5 w-1.5 rounded-full bg-danger" aria-hidden />
+                {progress.modelTimeouts} model{progress.modelTimeouts === 1 ? "" : "s"} over budget
               </span>
             )}
           </div>
@@ -641,6 +704,9 @@ function AnalysisPanel({
               )}
               {(summary.timeouts_total ?? 0) > 0 && (
                 <SummaryStat label="Timeouts (continued)" value={summary.timeouts_total ?? 0} tone="caution" />
+              )}
+              {(summary.model_timeouts ?? 0) > 0 && (
+                <SummaryStat label="Models over budget" value={summary.model_timeouts ?? 0} tone="caution" />
               )}
               {(summary.errors_total ?? 0) > 0 && (
                 <SummaryStat label="Source errors" value={summary.errors_total ?? 0} tone="caution" />
