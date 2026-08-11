@@ -101,6 +101,22 @@ STRICT = RuleSet(
     require_known_year=True,
 )
 
+# MODERATE sits between STRICT and BROAD. Its tolerances are data-tuned: a
+# diagnostic over the real retrieved pools showed the STRICT blockers (in order)
+# are km, year, then the hard transmission requirement - NOT engine/variant. So
+# MODERATE widens year/km, drops the transmission requirement, and keeps a
+# meaningful power band. It still requires a KNOWN year (no year-less shells).
+MODERATE = RuleSet(
+    name="moderate",
+    year_tol=2,
+    km_pct=0.40,
+    km_floor=25_000,
+    power_tol_kw=20,
+    require_same_variant=False,
+    require_same_transmission=False,
+    require_known_year=True,
+)
+
 BROAD = RuleSet(
     name="broad",
     year_tol=3,
@@ -378,8 +394,25 @@ def price_stats(df: pd.DataFrame) -> dict:
     prices = df["price"].dropna().astype(float)
     if len(prices) == 0:
         return {"count": 0}
+
+    # Robust outlier trim: with >=4 prices, drop those outside a median-anchored
+    # band [median/3, median*3]. This removes seller fat-fingers (e.g. a EUR
+    # 59,000 tag on a 2006 Passat, or a EUR 1 shell) that would distort mean/p75
+    # and can swing the median in smaller pools, while keeping the genuine spread
+    # of a same-model/year/km comparable set. Below 4 prices the median is too
+    # unstable to define an outlier, so we leave the sample untouched.
+    trimmed = 0
+    if len(prices) >= 4:
+        med0 = float(prices.median())
+        lo, hi = med0 / 3.0, med0 * 3.0
+        kept = prices[(prices >= lo) & (prices <= hi)]
+        trimmed = int(len(prices) - len(kept))
+        if len(kept) >= 3:  # never trim below a usable core
+            prices = kept
+
     return {
         "count": int(len(prices)),
+        "outliers_trimmed": trimmed,
         "min": float(prices.min()),
         "p25": float(prices.quantile(0.25)),
         "median": float(prices.median()),

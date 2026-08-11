@@ -39,7 +39,7 @@ import autobazar_scraper as ab
 import bazos_scraper as bz
 from inventory_loader import load_inventory
 from phase5_compare import (
-    RuleSet, STRICT, BROAD,
+    RuleSet, STRICT, MODERATE, BROAD,
     normalize_engine, normalize_fuel, normalize_transmission,
     _int, _clean, _listing_id_from_url, price_stats,
 )
@@ -499,6 +499,7 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
     unk = _unknown_fraction(strict)
     res = {
         "comparable_count": n,
+        "outliers_trimmed": stats.get("outliers_trimmed", 0),
         "market_median": stats.get("median"),
         "market_p25": stats.get("p25"),
         "market_p75": stats.get("p75"),
@@ -515,6 +516,39 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
         res["price_difference"] = None
         res["undervaluation_pct"] = None
     return res
+
+
+MIN_USABLE = 4  # a group needs >= this many comparables to be trusted
+
+# Ordered tightest -> loosest. The adaptive selector reports the *tightest* tier
+# that reaches MIN_USABLE, so each car gets the most precise estimate its data
+# can support instead of a one-size-fits-all threshold.
+TIERS = (STRICT, MODERATE, BROAD)
+
+
+def adaptive_estimate(car: InvCar, source_df: pd.DataFrame) -> dict:
+    """
+    Evaluate a source's candidates at every tolerance tier and pick the tightest
+    tier reaching MIN_USABLE comparables. If none do, fall back to the loosest
+    (BROAD) and flag it insufficient. Returns the estimate plus provenance:
+    `tier_used`, per-tier counts, and the matched rows for the chosen tier.
+    """
+    per_tier = {}
+    chosen = None
+    for rs in TIERS:
+        matched, _ = match(car, source_df, rs)
+        per_tier[rs.name] = len(matched)
+        if chosen is None and len(matched) >= MIN_USABLE:
+            chosen = (rs, matched)
+    if chosen is None:
+        rs = BROAD
+        matched, _ = match(car, source_df, rs)
+        chosen = (rs, matched)
+    rs, matched = chosen
+    est = estimate(car, matched)
+    est["tier_used"] = rs.name
+    est["tier_counts"] = "/".join(f"{t.name[:3]}:{per_tier[t.name]}" for t in TIERS)
+    return est, matched
 
 
 # --------------------------------------------------------------------------- #
@@ -545,9 +579,12 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
         print(f"  #{c.row_index:>3} {c.brand} {c.model} | {c.fuel} | {c.body_type} | "
               f"{c.year} | {f'{c.km:,}km' if c.km else '?'} | "
               f"{c.power_kw or '?'}kW ({c.power_source}) | EUR {c.price:,}")
-    print(f"\nSTRICT: {STRICT.describe()}")
-    print(f"BROAD : {BROAD.describe()}")
-    print("\nNOTE: prices assumed EUR on BOTH sides (inventory currency UNCONFIRMED).")
+        print(f"\nSTRICT  : {STRICT.describe()}")
+        print(f"MODERATE: {MODERATE.describe()}")
+        print(f"BROAD   : {BROAD.describe()}")
+        print(f"\nAdaptive tier: report the TIGHTEST tier reaching n>={MIN_USABLE} comparables; "
+              "else fall back to BROAD (flagged insufficient).")
+        print("\nNOTE: prices assumed EUR on BOTH sides (inventory currency UNCONFIRMED).")
     print("Retrieval: Autobazar CATEGORY PATH (keyword fallback on 404) + Bazos keyword, "
           f"{max_pages} page(s)/source, {delay}s delay. Sources never merged.\n")
 
@@ -567,31 +604,29 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
         print(f"  Bazos    : {len(bz_df)} listings"
               + (f"  [{bz_err}]" if bz_err else ""))
 
-        groups, disq = {}, {}
-        for name, src_df, ruleset in (
-            ("autobazar_strict", ab_df, STRICT),
-            ("autobazar_broad", ab_df, BROAD),
-            ("bazos_strict", bz_df, STRICT),
-            ("bazos_broad", bz_df, BROAD),
-        ):
-            groups[name], disq[name] = match(car, src_df, ruleset)
-        for name, g in groups.items():
-            if not g.empty:
-                g.to_csv(f"{out_dir}/car{car.row_index}_{name}.csv", index=False)
-
-        n_parts = disq["autobazar_broad"] + disq["bazos_broad"]
+        # Adaptive tier selection per source (tightest tier reaching MIN_USABLE).
+        _, disq_ab = match(car, ab_df, BROAD)   # broad superset -> parts count
+        _, disq_bz = match(car, bz_df, BROAD)
+        n_parts = disq_ab + disq_bz
         if n_parts:
             print(f"  filtered {n_parts} non-vehicle/parts listing(s) before matching")
 
-        # Combined strict pool (both sources, still reported separately below)
-        ab_est = estimate(car, groups["autobazar_strict"])
-        bz_est = estimate(car, groups["bazos_strict"])
+        ab_est, ab_matched = adaptive_estimate(car, ab_df)
+        bz_est, bz_matched = adaptive_estimate(car, bz_df)
 
-        for src, est, gb in (("AUTOBAZAR", ab_est, groups["autobazar_broad"]),
-                             ("BAZOS", bz_est, groups["bazos_broad"])):
-            print(f"  -- {src} -- strict comparables={est['comparable_count']} "
-                  f"(broad={len(gb)}) | "
-                  f"median={fmt(est['market_median'])} | "
+        # Persist the chosen-tier comparables for auditability.
+        for src, est, matched in (("autobazar", ab_est, ab_matched),
+                                  ("bazos", bz_est, bz_matched)):
+            if not matched.empty:
+                matched.to_csv(
+                    f"{out_dir}/car{car.row_index}_{src}_{est['tier_used']}.csv",
+                    index=False,
+                )
+
+        for src, est in (("AUTOBAZAR", ab_est), ("BAZOS", bz_est)):
+            print(f"  -- {src} -- tier={est['tier_used'].upper()} "
+                  f"[{est['tier_counts']}] | "
+                  f"comparables={est['comparable_count']} | "
                   f"est_market={fmt(est['estimated_market_price'])} | "
                   f"diff={fmt(est['price_difference'])} | "
                   f"undervaluation={est['undervaluation_pct'] if est['undervaluation_pct'] is not None else 'n/a'}% | "
@@ -606,8 +641,8 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
             agree = f"{spread:.0f}% median spread AB vs BZ"
             print(f"  cross-source: {agree}")
 
-        for src, est in (("autobazar", ab_est), ("bazos", bz_est)):
-            grp = groups[f"{src}_strict"]
+        for src, est, matched in (("autobazar", ab_est, ab_matched),
+                                  ("bazos", bz_est, bz_matched)):
             summary_rows.append({
                 "row_index": car.row_index,
                 "brand": car.brand, "model": car.model, "fuel": car.fuel,
@@ -616,7 +651,7 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
                 "source": src,
                 **est,
                 "cross_source_note": agree,
-                "example_links": " | ".join(top_links(grp)),
+                "example_links": " | ".join(top_links(matched)),
                 "retrieval_error": (ab_err if src == "autobazar" else bz_err) or "",
             })
 
@@ -624,9 +659,9 @@ def run(inv_path: str, max_pages: int, delay: float, out_dir: str) -> None:
     summary.to_csv(f"{out_dir}/phase6_summary.csv", index=False)
     print("\n" + "=" * 78)
     print(f"Saved per-car group CSVs and summary -> {out_dir}/phase6_summary.csv")
-    print("\n=== SUMMARY (strict comparables) ===")
+    print("\n=== SUMMARY (adaptive tier per source) ===")
     show = summary[["row_index", "brand", "model", "fuel", "source",
-                    "comparable_count", "estimated_market_price",
+                    "tier_used", "comparable_count", "estimated_market_price",
                     "undervaluation_pct", "confidence", "insufficient_sample"]]
     with pd.option_context("display.max_columns", None, "display.width", 220):
         print(show.to_string(index=False))
