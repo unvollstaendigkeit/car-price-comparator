@@ -454,10 +454,17 @@ def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFr
     query = _bazos_query(car)
     rows: list[dict] = []
     pages_ok = 0
+    tnote: Optional[str] = None
     try:
         for page in range(1, max_pages + 1):
             url = bz.build_search_url(query, crp=bz.crp_for_page(page))
-            html = bz.fetch(url)
+            try:
+                html = bz.fetch(url, brand=car.brand, model=car.model, page=page)
+            except bz.FetchTimeout as e:
+                # SOFT failure: stop paginating, KEEP partial rows, report a
+                # non-block TIMEOUT note (must not trip the circuit breaker).
+                tnote = f"TIMEOUT: page {page} exceeded the per-request deadline ({e})"
+                break
             pages_ok += 1
             cards = bz.parse_page(html, query, page)
             if not cards:
@@ -473,9 +480,10 @@ def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFr
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.drop_duplicates(subset="listing_id").reset_index(drop=True)
-        return df, None
+        return df, tnote  # tnote carries a timeout note if we kept partial data
     # Fetched fine but nothing came back -> genuine no-data, not a failure.
-    return df, f"no listings for query '{query}' (fetched {pages_ok} page(s) OK)"
+    no_data = f"no listings for query '{query}' (fetched {pages_ok} page(s) OK)"
+    return df, (f"{tnote}; {no_data}" if tnote else no_data)
 
 
 # --------------------------------------------------------------------------- #

@@ -35,6 +35,7 @@ from typing import Optional
 
 import pandas as pd
 
+import http_client
 from phase6_validate import retrieve_autobazar, retrieve_bazos
 
 CACHE_MISS_ERR = "CACHE_MISS: no saved market pool for this (source, brand, model)"
@@ -209,12 +210,16 @@ class LiveMarketProvider:
     def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
         fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
         t0 = time.perf_counter()
+        reqs_before = http_client.request_count()
         df, err = fn(car, pages, self.delay)
+        # True number of network GETs issued (may be 1..pages, or more with a
+        # keyword fallback) — not the previous hardcoded 1.
+        http_reqs = http_client.request_count() - reqs_before
         elapsed = time.perf_counter() - t0
         err = err or ""
         if self.store is not None:
             self.store.record(source, car.brand, car.model, pages, df, err, elapsed)
-        return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=1)
+        return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=http_reqs)
 
 
 class CachedMarketProvider:
@@ -295,15 +300,17 @@ class PersistentCacheProvider:
                     hit["df"].copy(deep=True), hit["err"], 0.0, 0,
                     from_cache=True, age_s=MarketStore.age_of(hit),
                 )
-        # Miss, expiry, or forced refresh -> one polite live request.
+        # Miss, expiry, or forced refresh -> live fetch (1..pages polite GETs).
         fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
         t0 = time.perf_counter()
+        reqs_before = http_client.request_count()
         df, err = fn(car, pages, self.delay)
+        http_reqs = http_client.request_count() - reqs_before
         elapsed = time.perf_counter() - t0
         err = err or ""
         self.store.record(source, car.brand, car.model, pages, df, err, elapsed)
         self._save()
-        return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=1,
+        return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=http_reqs,
                               from_cache=False, age_s=0.0)
 
     def _save(self) -> None:

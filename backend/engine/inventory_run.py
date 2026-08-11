@@ -35,6 +35,7 @@ from typing import Iterator, Optional
 
 import pandas as pd
 
+import http_client
 from phase6_validate import MIN_USABLE
 from single_car import SingleCarInput, build_canonical_car
 from phase7_fullrun import evaluate_car
@@ -55,6 +56,16 @@ _BLOCK_PREFIXES = ("BLOCKED", "ERROR")
 
 def _is_block(err: str) -> bool:
     return bool(err) and err.startswith(_BLOCK_PREFIXES)
+
+
+def _is_timeout(err: str) -> bool:
+    """
+    A per-request deadline overrun (SOFT failure). Distinct from a block: it must
+    NOT trip the circuit breaker and it does not mean the source is unavailable —
+    partial results may still have been kept. Timeout notes are emitted by the
+    Phase-6 wrappers as 'TIMEOUT: ...' (possibly after a fallback note).
+    """
+    return "TIMEOUT" in (err or "")
 
 
 def _links(joined: str) -> list[str]:
@@ -173,8 +184,14 @@ def analyze_inventory(
         "total_groups": len(groups),
     }
 
+    # Fresh, run-scoped instrumentation window so http_client.request_count()
+    # reflects only THIS run's real network GETs.
+    http_client.reset_log()
+
     consec_blocks = {"autobazar": 0, "bazos": 0}
     disabled: set[str] = set()
+    timeouts = {"autobazar": 0, "bazos": 0}   # per-source SOFT deadline overruns
+    errors = {"autobazar": 0, "bazos": 0}     # per-source hard block/error notes
     market_lookups = 0          # provider.retrieve calls (both modes)
     http_requests = 0           # real network requests (0 when fully cached)
     cache_hits = 0              # provider.retrieve calls served from cache (0 HTTP)
@@ -211,8 +228,13 @@ def analyze_inventory(
             cache_hits += 1
         if _is_block(err):
             consec_blocks[source] += 1
+            errors[source] += 1
         else:
             consec_blocks[source] = 0
+            # A timeout is a soft failure: count it, but it does NOT trip the
+            # breaker and any partial rows in res.df are still used.
+            if _is_timeout(err):
+                timeouts[source] += 1
         return res
 
     def timed_evaluate(car, ab_df, bz_df, ab_err, bz_err):
@@ -268,6 +290,8 @@ def analyze_inventory(
             if consec_blocks[source] >= block_limit and source not in disabled:
                 disabled.add(source)
                 newly_disabled.append(source)
+        ab_timed_out = _is_timeout(ab_res.err)
+        bz_timed_out = _is_timeout(bz_res.err)
         yield {
             "stage": "retrieved",
             "brand": rep_car.brand,
@@ -280,7 +304,25 @@ def analyze_inventory(
             "bz_from_cache": bz_res.from_cache,
             "ab_age_s": ab_res.age_s,
             "bz_age_s": bz_res.age_s,
+            "ab_timed_out": ab_timed_out,
+            "bz_timed_out": bz_timed_out,
         }
+
+        # A timeout keeps whatever partial rows we got and moves on. Announce it
+        # per source so the UI can show e.g. "Bazoš — timed out, continuing".
+        for source, timed_out, res in (
+            ("autobazar", ab_timed_out, ab_res),
+            ("bazos", bz_timed_out, bz_res),
+        ):
+            if timed_out:
+                yield {
+                    "stage": "source_timeout",
+                    "source": source,
+                    "brand": rep_car.brand,
+                    "model": rep_car.model,
+                    "kept": int(len(res.df)),
+                    "reason": "request exceeded its time limit; kept partial results and continued",
+                }
 
         for source in newly_disabled:
             yield {
@@ -364,6 +406,11 @@ def analyze_inventory(
         },
         "market_lookups": market_lookups,
         "disabled_sources": sorted(disabled),
+        # Per-source soft timeouts / hard errors so the UI can report resilience.
+        "timeouts": dict(timeouts),
+        "errors": dict(errors),
+        "timeouts_total": sum(timeouts.values()),
+        "errors_total": sum(errors.values()),
         # --- benchmark: how much runtime is retrieval vs. valuation? --------- #
         "benchmark": {
             "total_cars": total_cars,
@@ -371,10 +418,16 @@ def analyze_inventory(
             "cached_groups": cached_groups,
             "cache_hits": cache_hits,
             "http_requests": http_requests,
+            # Cross-check against the transport's own monotonic counter; these
+            # should match exactly (guards against accounting drift).
+            "http_requests_measured": http_client.request_count(),
             "market_lookups": market_lookups,
             "retrieval_time_s": round(retrieval_time_s, 4),
             "eval_time_s": round(eval_time_s, 4),
             "total_time_s": round(total_time_s, 4),
+            "avg_http_time_s": round(retrieval_time_s / http_requests, 4) if http_requests else 0.0,
+            "timeouts_total": sum(timeouts.values()),
+            "errors_total": sum(errors.values()),
             "mode": "cache-only" if http_requests == 0 else "live",
         },
         "ranked": ranked,
