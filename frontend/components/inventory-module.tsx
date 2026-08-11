@@ -410,14 +410,35 @@ interface Progress {
   lookups: number
 }
 
+interface CacheLogEntry {
+  model: string
+  cached: boolean
+  ageS: number | null
+}
+
+/** Human-readable age of a cached pool, e.g. "just now", "3h old", "2d old". */
+function formatAge(ageS: number | null): string {
+  if (ageS == null) return ""
+  if (ageS < 90) return "just now"
+  const mins = Math.round(ageS / 60)
+  if (mins < 90) return `${mins}m old`
+  const hours = Math.round(ageS / 3600)
+  if (hours < 36) return `${hours}h old`
+  return `${Math.round(ageS / 86400)}d old`
+}
+
 function AnalysisPanel({
   rows,
+  refresh,
   onBack,
   onReset,
+  onRefreshRun,
 }: {
   rows: InventoryRow[]
+  refresh: boolean
   onBack: () => void
   onReset: () => void
+  onRefreshRun: () => void
 }) {
   const [status, setStatus] = useState<"running" | "done" | "error">("running")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -433,6 +454,7 @@ function AnalysisPanel({
   const [results, setResults] = useState<AnalysisCarResult[]>([])
   const [summary, setSummary] = useState<AnalysisSummary | null>(null)
   const [notices, setNotices] = useState<string[]>([])
+  const [cacheLog, setCacheLog] = useState<CacheLogEntry[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -445,8 +467,13 @@ function AnalysisPanel({
           case "start":
             setProgress((p) => ({ ...p, total: e.total_cars, groupTotal: e.total_groups }))
             break
-          case "group_start":
+          case "group_start": {
             if (!e.cached) lookups += 2
+            // Oldest of the two sources' ages best represents the group's freshness.
+            const ages = [e.cache_status.autobazar.age_s, e.cache_status.bazos.age_s].filter(
+              (a): a is number => a != null,
+            )
+            const ageS = e.cached && ages.length ? Math.max(...ages) : null
             setProgress((p) => ({
               ...p,
               groupIndex: e.group_index,
@@ -455,7 +482,9 @@ function AnalysisPanel({
               cached: e.cached,
               lookups,
             }))
+            setCacheLog((log) => [...log, { model: `${e.brand} ${e.model}`, cached: e.cached, ageS }])
             break
+          }
           case "source_disabled":
             setNotices((n) => [...n, `${e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"}: ${e.reason}`])
             break
@@ -469,6 +498,7 @@ function AnalysisPanel({
               market_lookups: e.market_lookups,
               disabled_sources: e.disabled_sources,
               ranked: e.ranked,
+              benchmark: e.benchmark,
             })
             setStatus("done")
             break
@@ -479,6 +509,7 @@ function AnalysisPanel({
         }
       },
       controller.signal,
+      { refresh },
     ).catch((err) => {
       if (controller.signal.aborted) return
       setErrorMsg(err instanceof Error ? err.message : "Analysis failed.")
@@ -497,6 +528,8 @@ function AnalysisPanel({
       .sort((a, b) => (b.rank_price_diff_pct ?? 0) - (a.rank_price_diff_pct ?? 0))
 
   const pct = progress.total > 0 ? Math.round((progress.analyzed / progress.total) * 100) : 0
+  const cachedModels = cacheLog.filter((c) => c.cached).length
+  const liveModels = cacheLog.filter((c) => !c.cached).length
 
   return (
     <div className="flex flex-col gap-5">
@@ -513,13 +546,32 @@ function AnalysisPanel({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {status !== "running" && (
-              <button
-                type="button"
-                onClick={onBack}
-                className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
-              >
-                Back
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onRefreshRun}
+                  title="Ignore cached market data and re-fetch every model live"
+                  className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+                    <path
+                      d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Refresh market data
+                </button>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
+                >
+                  Back
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -548,7 +600,9 @@ function AnalysisPanel({
             <span className="text-faint">
               model {progress.groupIndex}/{progress.groupTotal}
             </span>
-            <span className="text-faint">{progress.lookups} market lookups so far</span>
+            <span className="text-faint">
+              {cachedModels} cached · {liveModels} live · {progress.lookups} live lookups
+            </span>
           </div>
         )}
 
@@ -558,7 +612,35 @@ function AnalysisPanel({
             <SummaryStat label="Medium" value={summary.counts.medium} tone="accent" />
             <SummaryStat label="Low" value={summary.counts.low} tone="caution" />
             <SummaryStat label="Insufficient" value={summary.counts.insufficient} tone="muted" />
-            <SummaryStat label="Market lookups" value={summary.market_lookups} tone="muted" />
+            <SummaryStat label="Live requests" value={summary.benchmark?.http_requests ?? summary.market_lookups} tone="muted" />
+            {summary.benchmark && summary.benchmark.cached_groups > 0 && (
+              <SummaryStat label="Models from cache" value={summary.benchmark.cached_groups} tone="positive" />
+            )}
+          </div>
+        )}
+
+        {/* Per-model cache/live activity log — proves reuse and shows data age. */}
+        {cacheLog.length > 0 && (
+          <div className="rounded-md border border-border bg-surface-2/40 p-3">
+            <p className="mb-2 text-[12px] uppercase tracking-wide text-faint">Market data source per model</p>
+            <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
+              {cacheLog.map((c, i) => (
+                <li key={`${c.model}-${i}`} className="flex items-center justify-between gap-3">
+                  <span className="truncate text-foreground">{c.model}</span>
+                  {c.cached ? (
+                    <span className="flex shrink-0 items-center gap-1.5 text-positive">
+                      <span className="block h-1.5 w-1.5 rounded-full bg-positive" aria-hidden />
+                      cached{c.ageS != null ? ` · ${formatAge(c.ageS)}` : ""}
+                    </span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-1.5 text-muted">
+                      <span className="block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+                      fetched live
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

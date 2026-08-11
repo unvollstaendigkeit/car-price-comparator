@@ -42,6 +42,7 @@ from market_provider import (  # noqa: E402
     CachedMarketProvider,
     LiveMarketProvider,
     MarketStore,
+    PersistentCacheProvider,
 )
 
 
@@ -178,6 +179,9 @@ def main() -> int:
                     help="synthetic cache-only inventory size (0 = skip)")
     ap.add_argument("--delay", type=float, default=1.0)
     ap.add_argument("--store", default=DEFAULT_STORE_PATH)
+    ap.add_argument("--cache-demo", type=int, default=0,
+                    help="unique (brand,model) groups for the cold-vs-warm persistent-cache demo "
+                         "(uses the real PersistentCacheProvider; 0 = skip)")
     args = ap.parse_args()
 
     all_rows = confirmed_rows(args.dataset)
@@ -232,6 +236,43 @@ def main() -> int:
         print(f"  confidence: HIGH={syn_summary['counts']['high']} "
               f"MED={syn_summary['counts']['medium']} LOW={syn_summary['counts']['low']} "
               f"INSUF={syn_summary['counts']['insufficient']}")
+
+    # ---- Phase C: cold vs warm PERSISTENT cache demo ---------------------- #
+    # Uses the real production transport (PersistentCacheProvider) so the numbers
+    # reflect exactly what Inventory mode does: first run fetches live and fills
+    # the cache; the second identical run reuses it with ZERO HTTP.
+    if args.cache_demo > 0:
+        import tempfile
+        demo_rows = limit_to_groups(all_rows, args.cache_demo)
+        n = len({group_key(r) for r in demo_rows})
+        demo_path = os.path.join(tempfile.mkdtemp(), "cache_demo.pkl")
+        print(f"\n[PERSISTENT CACHE] Cold vs warm over {n} group(s) / {len(demo_rows)} car(s), "
+              f"delay={args.delay}s, ttl=24h ...")
+
+        cold = PersistentCacheProvider(path=demo_path, delay=args.delay)
+        cold_summary, cold_results = run(demo_rows, cold, delay=args.delay)
+        print_report(f"COLD run ({len(demo_rows)} cars, empty cache)", cold_summary["benchmark"])
+
+        # A fresh provider instance LOADS the just-persisted store from disk,
+        # simulating a later, separate inventory run by the same dealer.
+        warm = PersistentCacheProvider(path=demo_path, delay=args.delay)
+        warm_summary, warm_results = run(demo_rows, warm, delay=args.delay)
+        print_report(f"WARM run ({len(demo_rows)} cars, reused cache)", warm_summary["benchmark"])
+
+        cb, wb = cold_summary["benchmark"], warm_summary["benchmark"]
+        problems = diff_results(cold_results, warm_results)
+        assert wb["http_requests"] == 0, "warm run made HTTP requests!"
+        speedup = (cb["total_time_s"] / wb["total_time_s"]) if wb["total_time_s"] else float("inf")
+        print("\n  --- cold vs warm ---")
+        print(f"    HTTP requests ... cold={cb['http_requests']:4d}   warm={wb['http_requests']:4d}   "
+              f"(saved {cb['http_requests'] - wb['http_requests']})")
+        print(f"    total time ...... cold={cb['total_time_s']:8.3f}s  warm={wb['total_time_s']:8.3f}s  "
+              f"({speedup:.0f}x faster)")
+        print(f"    identity ........ {'PASS' if not problems else 'FAIL (%d mismatch)' % len(problems)}")
+        if problems:
+            for p in problems[:20]:
+                print(f"       - {p}")
+            return 1
 
     print("\nDone.")
     return 0
