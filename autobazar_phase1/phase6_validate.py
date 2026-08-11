@@ -27,8 +27,10 @@ and record it, never circumvent. Request volume is kept low with delays.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -73,13 +75,102 @@ _BRAND_SLUG = {
     "mercedes": "mercedes-benz",
     "merc": "mercedes-benz",
 }
-# Model-slug quirks where the generic slugify is wrong. Confirmed live:
-# VW "ID.3" -> generic 'id-3' 404s; the real modelSef is 'id3'.
+# Small set of known model-slug quirks kept as a fast path / offline fallback.
+# The live facet resolver below is the primary, general mechanism; this map only
+# short-circuits well-known cases and lets tests run without network.
 _MODEL_SLUG = {
     ("volkswagen", "id.3"): "id3",
     ("volkswagen", "id.4"): "id4",
     ("volkswagen", "id.5"): "id5",
 }
+
+
+def _strip_accents(s: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
+    )
+
+
+def _norm_label(s: str) -> str:
+    """Normalize a model label/name for matching: lowercase, de-accent, collapse."""
+    s = _strip_accents(str(s).lower()).strip()
+    return re.sub(r"\s+", " ", s)
+
+
+# Cache of {brand_slug: {normalized_label: model_sef}} scraped once per brand
+# from Autobazar's own model facet in __NEXT_DATA__. This is the general,
+# self-maintaining source of truth for model slugs (e.g. "3 Series" -> "rad-3",
+# "A-Class" -> "a-trieda") rather than a brittle hand-maintained table.
+_AB_MODEL_FACET_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _ab_brand_model_facet(brand_slug: str) -> dict[str, str]:
+    """Fetch and cache Autobazar's model taxonomy for a brand: label -> sefName."""
+    if brand_slug in _AB_MODEL_FACET_CACHE:
+        return _AB_MODEL_FACET_CACHE[brand_slug]
+    facet: dict[str, str] = {}
+    try:
+        html = ab.fetch(f"{ab.BASE}/vysledky/osobne-vozidla/{brand_slug}/")
+        m = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+            html,
+            re.S,
+        )
+        if m:
+            data = json.loads(m.group(1))
+
+            def walk(o):
+                if isinstance(o, dict):
+                    for v in o.values():
+                        walk(v)
+                elif isinstance(o, list):
+                    for x in o:
+                        if (
+                            isinstance(x, dict)
+                            and {"label", "sefName"} <= set(x.keys())
+                            and "subs" in x
+                            and x.get("label")
+                            and x.get("sefName")
+                        ):
+                            facet[_norm_label(x["label"])] = x["sefName"]
+                        walk(x)
+
+            walk(data)
+    except Exception:  # noqa: BLE001 - resolver must degrade gracefully to fallback
+        pass
+    _AB_MODEL_FACET_CACHE[brand_slug] = facet
+    return facet
+
+
+def _model_slug_candidates(model: str) -> list[str]:
+    """
+    Deterministic candidate slugs for a model name, in priority order. Used to
+    match against the live facet labels AND as constructed slugs to try directly.
+    Handles: 'N Series' -> 'rad n', '-Class'/'-Klasse' -> ' trieda' / stripped,
+    and 'ID.3' -> 'id3'.
+    """
+    m = _norm_label(model)
+    cands = [m]
+    ser = re.match(r"^(\d+)\s*series$", m)
+    if ser:
+        cands += [f"rad {ser.group(1)}", f"rad-{ser.group(1)}"]
+    if m.endswith("-class") or m.endswith(" class"):
+        base = m.rsplit("class", 1)[0].strip(" -")
+        cands += [f"{base} trieda", base]
+    if m.endswith("-klasse") or m.endswith(" klasse"):
+        base = m.rsplit("klasse", 1)[0].strip(" -")
+        cands += [f"{base} trieda", base]
+    # de-dotted compact form, e.g. id.3 -> id3
+    compact = re.sub(r"[.\s-]+", "", m)
+    if compact and compact != m:
+        cands.append(compact)
+    # unique, order-preserving
+    seen, out = set(), []
+    for c in cands:
+        if c and c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -219,14 +310,43 @@ def _norm_market_row(source: str, raw: dict) -> dict:
     }
 
 
-def _ab_slugs(car: InvCar) -> tuple[str, str]:
-    """Map an inventory brand/model to Autobazar category-path SEF slugs."""
+def _ab_slugs(car: InvCar, use_live_facet: bool = True) -> tuple[str, str]:
+    """
+    Map an inventory brand/model to Autobazar category-path SEF slugs.
+
+    Resolution order (first hit wins):
+      1. Known-quirk hardcoded map (fast path, offline-friendly).
+      2. Live model facet from Autobazar's own taxonomy: match the model's
+         candidate labels (e.g. '3 series' -> facet label 'rad 3' -> 'rad-3',
+         'a-class' -> 'a trieda' -> 'a-trieda').
+      3. Constructed candidate slug that the facet confirms exists.
+      4. Generic slugify (last resort; retrieve_autobazar keyword-falls-back if
+         this 404s).
+    """
     brand_key = car.brand.strip().lower()
     brand_slug = _BRAND_SLUG.get(brand_key, ab._slugify(car.brand))
-    model_slug = _MODEL_SLUG.get(
-        (brand_slug, car.model.strip().lower()), ab._slugify(car.model)
-    )
-    return brand_slug, model_slug
+
+    hard = _MODEL_SLUG.get((brand_slug, car.model.strip().lower()))
+    if hard:
+        return brand_slug, hard
+
+    candidates = _model_slug_candidates(car.model)
+
+    if use_live_facet:
+        facet = _ab_brand_model_facet(brand_slug)
+        if facet:
+            # (a) a candidate label matches a facet label -> use its real sef
+            for c in candidates:
+                if c in facet:
+                    return brand_slug, facet[c]
+            # (b) a constructed slug equals a known facet sef value
+            facet_sefs = set(facet.values())
+            for c in candidates:
+                cs = ab._slugify(c)
+                if cs in facet_sefs:
+                    return brand_slug, cs
+
+    return brand_slug, ab._slugify(car.model)
 
 
 def _fetch_ab_pages(url_for_page, max_pages: int, delay: float) -> list[dict]:
@@ -286,13 +406,39 @@ def retrieve_autobazar(car: InvCar, max_pages: int, delay: float) -> tuple[pd.Da
     return df, note
 
 
+def _bazos_query(car: InvCar) -> str:
+    """
+    Build the Bazos free-text query. Bazos matches the raw string against ad
+    titles, so decorative model suffixes hurt recall: 'Mercedes GLA-Class'
+    returns ~5 ads where 'Mercedes GLA' returns a full page. We therefore strip
+    '-Class'/'-Klasse'/' Series' and split a glued 'GLA-Class' on the hyphen,
+    keeping just the model stem. Brand+model only; year/trim would over-narrow.
+    """
+    model = _strip_accents(car.model).strip()
+    model = re.sub(r"[-\s]?(class|klasse|series|trieda)\b", "", model, flags=re.I)
+    model = model.replace("-", " ").strip()
+    model = re.sub(r"\s+", " ", model)
+    return f"{car.brand} {model}".strip()
+
+
 def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFrame, Optional[str]]:
-    query = f"{car.brand} {car.model}"
+    """
+    Retrieve Bazos candidates by normalized free-text query.
+
+    Failure vs no-data: a network/HTTP block returns an empty frame with a
+    BLOCKED note (a real error the caller must surface). A successful fetch that
+    simply has no matching ads returns an empty frame with a 'no listings' note,
+    NOT an error - these are semantically different and were previously
+    conflated, making genuine market scarcity look like a scraper failure.
+    """
+    query = _bazos_query(car)
     rows: list[dict] = []
+    pages_ok = 0
     try:
         for page in range(1, max_pages + 1):
             url = bz.build_search_url(query, crp=bz.crp_for_page(page))
             html = bz.fetch(url)
+            pages_ok += 1
             cards = bz.parse_page(html, query, page)
             if not cards:
                 break
@@ -303,10 +449,13 @@ def retrieve_bazos(car: InvCar, max_pages: int, delay: float) -> tuple[pd.DataFr
         return pd.DataFrame(rows), f"BLOCKED: {e}"
     except Exception as e:  # noqa: BLE001
         return pd.DataFrame(rows), f"ERROR: {type(e).__name__}: {e}"
+
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.drop_duplicates(subset="listing_id").reset_index(drop=True)
-    return df, None
+        return df, None
+    # Fetched fine but nothing came back -> genuine no-data, not a failure.
+    return df, f"no listings for query '{query}' (fetched {pages_ok} page(s) OK)"
 
 
 # --------------------------------------------------------------------------- #
@@ -493,10 +642,19 @@ def confidence_level(strict_n: int, unknown_frac: float) -> str:
     return base
 
 
+# A used car's estimated market price should sit within a sane multiple of its
+# asking price. Outside this band the "market median" is almost certainly a
+# parse artifact (a monthly leasing rate, a deposit, a typo) rather than a real
+# comparable - e.g. the VW Touran -229.7% case from a single bad Bazos listing.
+_SANE_RATIO_LOW = 0.20   # market >= 20% of asking  (=> undervaluation <= +80%)
+_SANE_RATIO_HIGH = 5.0   # market <= 5x asking       (=> overvaluation bounded)
+
+
 def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
     stats = price_stats(strict) if not strict.empty else {"count": 0}
     n = stats.get("count", 0)
     unk = _unknown_fraction(strict)
+    warnings: list[str] = []
     res = {
         "comparable_count": n,
         "outliers_trimmed": stats.get("outliers_trimmed", 0),
@@ -512,9 +670,33 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
         med = stats["median"]
         res["price_difference"] = med - car.price
         res["undervaluation_pct"] = round((med - car.price) / med * 100, 1) if med else None
+
+        # Single-listing estimates are inherently fragile: one mispriced ad IS
+        # the median. Never let them read as reliable.
+        if n == 1:
+            warnings.append("single-listing estimate (n=1) - treat as indicative only")
+            if res["confidence"] in ("medium", "high"):
+                res["confidence"] = "low"
+
+        # Implausible market/asking ratio => the median is not a real comparable.
+        ratio = (med / car.price) if car.price else None
+        if ratio is not None and (ratio < _SANE_RATIO_LOW or ratio > _SANE_RATIO_HIGH):
+            warnings.append(
+                f"implausible market/asking ratio {ratio:.2f} "
+                f"(median EUR {med:,.0f} vs asking EUR {car.price:,.0f}); "
+                "likely a price parse/outlier artifact - estimate suppressed"
+            )
+            # Suppress the misleading numeric signal but keep the raw stats for audit.
+            res["estimated_market_price"] = None
+            res["price_difference"] = None
+            res["undervaluation_pct"] = None
+            res["confidence"] = "none"
+            res["insufficient_sample"] = True
     else:
         res["price_difference"] = None
         res["undervaluation_pct"] = None
+
+    res["sample_warning"] = "; ".join(warnings) if warnings else ""
     return res
 
 
