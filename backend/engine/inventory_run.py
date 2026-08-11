@@ -29,6 +29,7 @@ yields plain event dicts. `main.py` wraps them as SSE.
 """
 from __future__ import annotations
 
+import threading
 import time
 from collections import OrderedDict
 from typing import Iterator, Optional
@@ -239,6 +240,47 @@ def analyze_inventory(
         except Exception:  # noqa: BLE001 - peek is advisory only
             return None
 
+    # Small grace over the cooperative deadline so the lower layers get a chance
+    # to stop cleanly (nicer notes, real partial data) before the watchdog fires.
+    _BUDGET_GRACE_S = 2.0
+
+    def _retrieve_within_budget(source: str, car, pages: int,
+                                deadline: Optional[float]) -> RetrieveResult:
+        """Run provider.retrieve, but never block past the per-model budget.
+
+        Returns whatever the retrieve produced if it finishes in time; otherwise
+        abandons the worker (which winds down on its own via the deadline it was
+        given) and returns a budget-timeout result so the run moves on NOW."""
+        if deadline is None:
+            return provider.retrieve(source, car, pages, deadline=deadline)
+
+        box: dict = {}
+        done = threading.Event()
+
+        def _work() -> None:
+            try:
+                box["res"] = provider.retrieve(source, car, pages, deadline=deadline)
+            except BaseException as exc:  # noqa: BLE001 - carried to caller
+                box["exc"] = exc
+            finally:
+                done.set()
+
+        threading.Thread(
+            target=_work, name=f"retrieve:{source}", daemon=True,
+        ).start()
+
+        budget_left = deadline - time.perf_counter()
+        if not done.wait(max(0.0, budget_left) + _BUDGET_GRACE_S):
+            # Overran even the grace window: abandon and move on immediately.
+            return RetrieveResult(
+                pd.DataFrame(),
+                f"TIMEOUT: model time budget ({model_budget_s:.0f}s) exceeded; "
+                f"abandoned {source} and continued", 0.0, 0,
+            )
+        if "exc" in box:
+            raise box["exc"]
+        return box["res"]
+
     def fetch(source: str, car, pages: int, deadline: Optional[float] = None) -> RetrieveResult:
         """One retrieval via the provider, honoring the circuit breaker and the
         per-model time budget (`deadline`, an absolute time.perf_counter())."""
@@ -251,7 +293,16 @@ def analyze_inventory(
                 pd.DataFrame(),
                 "TIMEOUT: model time budget exceeded before fetch", 0.0, 0,
             )
-        res = provider.retrieve(source, car, pages, deadline=deadline)
+
+        # AUTHORITATIVE per-model hard stop. The lower layers cooperatively honor
+        # `deadline` (page loops check it; each HTTP request is capped to the time
+        # remaining), which normally keeps us inside the budget. This watchdog is
+        # the guarantee that does NOT depend on every layer plumbing the deadline
+        # perfectly: we run provider.retrieve on a worker and, if it overruns the
+        # remaining budget, ABANDON it and move on. The abandoned worker winds
+        # down on its own within one request cap (its next page-loop check sees
+        # the deadline has passed), so background work stays bounded.
+        res = _retrieve_within_budget(source, car, pages, deadline)
         err = res.err or ""
         market_lookups += 1
         http_requests += res.http_requests

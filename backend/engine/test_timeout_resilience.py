@@ -264,6 +264,48 @@ def test_wrapper_skips_network_when_budget_already_spent(monkeypatch):
     assert note and "TIMEOUT" in note and "budget" in note.lower()
 
 
+class _UncooperativeProvider:
+    """A provider that IGNORES the deadline entirely and blocks far longer than
+    the budget on the first (Golf) fetch — simulating a lower layer that fails to
+    honor the cooperative deadline. The AUTHORITATIVE model-level watchdog must
+    still abandon it and let the run continue. This is the exact class of bug the
+    user hit (a request running its full timeout past the budget)."""
+    def __init__(self, block_s=30.0):
+        self.block_s = block_s
+        self.calls: list[tuple[str, str]] = []
+
+    def retrieve(self, source, car, pages, deadline=None):
+        self.calls.append((car.model.lower(), source))
+        if car.model.lower() == "golf" and source == "autobazar":
+            time.sleep(self.block_s)  # deliberately ignores `deadline`
+        return RetrieveResult(
+            df=pd.DataFrame([{
+                "url": f"http://{source}/{car.model}", "price_eur": 8000,
+                "year": 2016, "km": 150000, "title": f"{car.brand} {car.model}",
+                "source": source,
+            }]), err="", elapsed_s=0.0, http_requests=1,
+        )
+
+
+def test_watchdog_abandons_uncooperative_retrieve():
+    """Even if provider.retrieve blocks 30s ignoring a 0.5s budget, the model is
+    abandoned within budget+grace and the whole run stays bounded and completes."""
+    prov = _UncooperativeProvider(block_s=30.0)
+    t0 = time.perf_counter()
+    events = list(inv.analyze_inventory(_rows(), provider=prov, model_budget_s=0.5))
+    wall = time.perf_counter() - t0
+
+    # The uncooperative model was abandoned (a group_timeout fired for Golf)...
+    gts = [e for e in events if e["stage"] == "group_timeout"]
+    assert any(e["model"].lower() == "golf" for e in gts), "Golf must be abandoned"
+    # ...the run completed and valued every car anyway...
+    summary = next(e for e in events if e["stage"] == "summary")
+    assert summary["counts"]["analyzed"] == 2
+    # ...and crucially it did NOT block for anywhere near the 30s the layer wanted.
+    # budget 0.5s + a small grace per abandoned fetch, nowhere near 30s.
+    assert wall < 10.0, f"watchdog must bound the run, took {wall:.2f}s"
+
+
 class _BudgetProvider:
     """Simulates ONE pathological slow model (Golf) whose first fetch overruns
     the tiny per-model budget, while every other model is instant. Proves the
