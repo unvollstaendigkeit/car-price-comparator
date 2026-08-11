@@ -6,7 +6,8 @@
     },
     "backend": {
       "entrypoint": "backend/main.py",
-      "routePrefix": "/api"
+      "routePrefix": "/api",
+      "maxDuration": 60
     }
   }
 }
