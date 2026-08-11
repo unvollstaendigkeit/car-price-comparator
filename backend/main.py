@@ -10,11 +10,9 @@ Endpoints (Vercel strips the `/api` routePrefix before forwarding):
   GET  /health                 - liveness probe
   POST /compare                - single-car comparison (synchronous JSON)
   POST /compare/stream         - single-car comparison as an SSE progress stream
-  POST /inventory/validate     - normalize + validate an uploaded CSV/XLSX
 """
 from __future__ import annotations
 
-import io
 import json
 import math
 import os
@@ -23,8 +21,6 @@ from typing import Any, Optional
 
 import fastapi
 import fastapi.middleware.cors
-import pandas as pd
-from fastapi import File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -41,7 +37,6 @@ from single_car import (  # noqa: E402  (import after sys.path setup)
     compare_single_car,
 )
 from phase6_validate import retrieve_autobazar, retrieve_bazos  # noqa: E402
-from inventory_normalizer import normalize_inventory  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -204,45 +199,4 @@ def compare_stream(payload: CarPayload) -> StreamingResponse:
         gen(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Inventory: upload + validate (no scraping). Reuses the engine normalizer.
-# --------------------------------------------------------------------------- #
-def _read_upload(filename: str, raw: bytes) -> pd.DataFrame:
-    name = (filename or "").lower()
-    if name.endswith(".xlsx") or name.endswith(".xls"):
-        return pd.read_excel(io.BytesIO(raw), dtype=str)
-    # default: CSV (utf-8 with latin-1 fallback for dealer exports)
-    try:
-        return pd.read_csv(io.BytesIO(raw), dtype=str)
-    except UnicodeDecodeError:
-        return pd.read_csv(io.BytesIO(raw), dtype=str, encoding="latin-1")
-
-
-@app.post("/inventory/validate")
-async def inventory_validate(file: UploadFile = File(...)) -> dict:
-    raw = await file.read()
-    try:
-        df = _read_upload(file.filename or "", raw)
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"Could not read file: {e}"}
-
-    report = normalize_inventory(df)
-
-    rows = report.rows.where(pd.notna(report.rows), None).to_dict(orient="records")
-    return _json_safe(
-        {
-            "ok": True,
-            "filename": file.filename,
-            "detected_columns": report.detected_columns,
-            "mapping": report.mapping,
-            "unmapped_columns": report.unmapped_columns,
-            "missing_required": report.missing_required,
-            "ambiguities": report.ambiguities,
-            "counts": report.counts,
-            "row_issues": report.row_issues,
-            "rows": rows,
-        }
     )

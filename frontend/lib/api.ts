@@ -1,4 +1,4 @@
-import type { CarInput, InventoryReport, ProgressEvent } from './types'
+import type { CarInput, ProgressEvent } from './types'
 
 /**
  * Stream a single-car comparison. Vercel routes /api/* to the FastAPI backend,
@@ -46,20 +46,4 @@ export async function streamCompare(
       }
     }
   }
-}
-
-export async function validateInventory(file: File): Promise<InventoryReport> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch('/api/inventory/validate', {
-    method: 'POST',
-    body: form,
-  })
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: `Backend returned ${res.status}`,
-    } as InventoryReport
-  }
-  return (await res.json()) as InventoryReport
 }
