@@ -1,4 +1,40 @@
-import type { CarInput, ParsedRow, ProgressEvent } from './types'
+import type { CarInput, InventoryReport, ParsedRow, ProgressEvent } from './types'
+
+/** Turn a non-2xx response into a readable message, preferring FastAPI's `detail`. */
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.json()
+    if (data && typeof data.detail === 'string') return data.detail
+  } catch {
+    // not JSON — fall through
+  }
+  return fallback
+}
+
+/**
+ * Upload a dealer inventory spreadsheet (.csv / .xlsx) and get back a
+ * normalized + validated review report. PARSING ONLY — no marketplace scraping
+ * happens; the backend reuses the same canonical normalizer as the single-car
+ * path so there is one methodology across the app.
+ */
+export async function parseInventory(file: File): Promise<InventoryReport> {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetch('/api/inventory/parse', { method: 'POST', body })
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Backend returned ${res.status}`))
+  }
+  return (await res.json()) as InventoryReport
+}
+
+/** Load a bundled demo inventory ("sample" = 98 cars, "alt" = alternative format). */
+export async function loadInventoryDemo(name: 'sample' | 'alt' = 'sample'): Promise<InventoryReport> {
+  const res = await fetch(`/api/inventory/demo?name=${encodeURIComponent(name)}`)
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Backend returned ${res.status}`))
+  }
+  return (await res.json()) as InventoryReport
+}
 
 /**
  * Parse a single pasted spreadsheet / Markdown / delimited row into the

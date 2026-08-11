@@ -11,8 +11,12 @@ forwards to this service (the `/api/*` rewrite passes the original path
 through unchanged):
   GET  /api/health             - liveness probe
   POST /api/parse-row          - parse a pasted Excel/Sheets/Markdown row -> fields
+  POST /api/inventory/parse    - normalize+validate an uploaded inventory file
+  GET  /api/inventory/demo     - normalize+validate a bundled demo inventory
   POST /api/compare            - single-car comparison (synchronous JSON)
   POST /api/compare/stream     - single-car comparison as an SSE progress stream
+
+The inventory routes do PARSING/VALIDATION ONLY — no marketplace scraping.
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ from typing import Any, Optional
 
 import fastapi
 import fastapi.middleware.cors
+from fastapi import File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -41,6 +46,11 @@ from single_car import (  # noqa: E402  (import after sys.path setup)
 )
 from phase6_validate import retrieve_autobazar, retrieve_bazos  # noqa: E402
 from row_parser import parse_pasted_row  # noqa: E402
+from inventory_api import (  # noqa: E402
+    InventoryReadError,
+    parse_demo,
+    parse_upload,
+)
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -130,6 +140,29 @@ class ParseRowPayload(BaseModel):
 def parse_row(payload: ParseRowPayload) -> dict:
     parsed = parse_pasted_row(payload.text or "")
     return _json_safe(parsed.to_dict())
+
+
+# --------------------------------------------------------------------------- #
+# Inventory: upload → normalize → validate. PARSING ONLY — no scraping happens
+# here. Reuses the same `inventory_normalizer` as the single-car paste path, so
+# there is exactly one normalization methodology across the app. The response
+# is a review report the frontend renders before any (future) valuation phase.
+# --------------------------------------------------------------------------- #
+@app.post("/api/inventory/parse")
+async def inventory_parse(file: UploadFile = File(...)) -> dict:
+    content = await file.read()
+    try:
+        return _json_safe(parse_upload(file.filename or "", content))
+    except InventoryReadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/inventory/demo")
+def inventory_demo(name: str = "sample") -> dict:
+    try:
+        return _json_safe(parse_demo(name))
+    except InventoryReadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --------------------------------------------------------------------------- #

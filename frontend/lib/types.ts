@@ -138,3 +138,50 @@ export interface ParsedRow {
   cells: string[]
   issues: string[]
 }
+
+/* ---- inventory upload (backend inventory_api.parse_upload / parse_demo) ----
+ * Parsing + validation ONLY. No marketplace scraping happens in this phase. */
+export type InventoryRowStatus = 'ready' | 'sold' | 'review'
+
+export interface InventoryRow {
+  row_index: number
+  row_number: number
+  brand: string | null
+  model: string | null
+  variant: string | null
+  year: number | null
+  fuel: string | null
+  km: number | null
+  price: number | null
+  body_type: string | null
+  vin: string | null
+  colour: string | null
+  status: string | null
+  status_label: InventoryRowStatus
+  valid_for_comparison: boolean
+  issues: string[]
+  price_original: string | null
+  km_original: string | null
+  year_source: string | null
+}
+
+export interface InventoryCounts {
+  total_rows: number
+  valid_for_comparison: number
+  sold_or_unavailable: number
+  invalid: number
+  review: number
+}
+
+export interface InventoryReport {
+  ok: boolean
+  source_name: string
+  counts: InventoryCounts
+  mapping: { field: string; column: string }[]
+  unmapped_columns: string[]
+  missing_required: string[]
+  ambiguities: string[]
+  detected_columns: string[]
+  required_fields: string[]
+  rows: InventoryRow[]
+}
