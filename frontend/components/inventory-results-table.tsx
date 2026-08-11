@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { AnalysisCarResult, AnalysisSourceResult } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtYear, tierLabel } from "@/lib/format"
 import { ConfidenceBadge, DiffBadge, MetaPill } from "@/components/badges"
+import { MileageBadge, MileageNotice } from "@/components/mileage-notice"
 
 /**
  * Ranked batch results, most → least below market. Autobazar and Bazoš are
@@ -80,8 +81,8 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
 
       {open && (
         <div className="grid gap-4 border-t border-border bg-surface-2/30 px-4 py-4 md:grid-cols-2">
-          <SourceDetail title="Autobazar.eu" src={car.autobazar} />
-          <SourceDetail title="Bazoš.sk" src={car.bazos} />
+          <SourceDetail title="Autobazar.eu" src={car.autobazar} submittedKm={car.km} />
+          <SourceDetail title="Bazoš.sk" src={car.bazos} submittedKm={car.km} />
           <div className="md:col-span-2 flex flex-col gap-1 border-t border-border pt-3 text-[12px] text-faint">
             <p>
               <span className="text-muted">Why this confidence: </span>
@@ -120,11 +121,22 @@ function SourceCell({ src }: { src: AnalysisSourceResult }) {
         <DiffBadge pct={src.price_diff_pct} />
         <span className="text-[11px] text-faint">n={src.comparable_count}</span>
       </span>
+      {(src.mileage_match === "large" || src.mileage_match === "very_large") && (
+        <MileageBadge match={src.mileage_match} />
+      )}
     </span>
   )
 }
 
-function SourceDetail({ title, src }: { title: string; src: AnalysisSourceResult }) {
+function SourceDetail({
+  title,
+  src,
+  submittedKm,
+}: {
+  title: string
+  src: AnalysisSourceResult
+  submittedKm: number | null
+}) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -144,6 +156,25 @@ function SourceDetail({ title, src }: { title: string; src: AnalysisSourceResult
           <span className="font-mono tabular-nums text-foreground">{fmtEur(src.median_eur)}</span>
           <DiffBadge pct={src.price_diff_pct} />
         </div>
+      )}
+      {src.comparable_count > 0 && !src.error && (
+        <MileageNotice
+          match={src.mileage_match}
+          compMedian={src.comp_km_median}
+          compP25={src.comp_km_p25}
+          compP75={src.comp_km_p75}
+          submittedKm={submittedKm}
+          direction={
+            src.comp_km_median != null && submittedKm != null
+              ? src.comp_km_median < submittedKm
+                ? "lower"
+                : src.comp_km_median > submittedKm
+                  ? "higher"
+                  : "same"
+              : "unknown"
+          }
+          note={src.mileage_note}
+        />
       )}
       {src.example_links.length > 0 && (
         <div className="flex flex-col gap-0.5">

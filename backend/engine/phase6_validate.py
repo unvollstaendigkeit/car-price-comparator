@@ -630,6 +630,153 @@ def _unknown_fraction(df: pd.DataFrame) -> float:
     return unk / len(df)
 
 
+# --------------------------------------------------------------------------- #
+# Mileage similarity (explicit confidence factor)
+# --------------------------------------------------------------------------- #
+# The comparability rules gate km with a PERCENTAGE of the submitted car's own
+# mileage (STRICT +/-30%, MODERATE +/-40%, BROAD +/-60%, with absolute floors).
+# For a very high-mileage car that percentage window becomes enormous (a 250k km
+# car admits +/-150k km under BROAD), so much-lower-mileage listings slip into
+# the pool, drag the median up, and the car reads "below market" with HIGH
+# confidence. This factor measures how well the ACTUAL comparable-mileage
+# distribution matches the submitted car and downgrades confidence when it does
+# not - WITHOUT touching the price calculation.
+#
+# Thresholds are deliberately reused from the engine's own km tolerances rather
+# than invented:
+#   * MILEAGE_NOISE_FLOOR_KM = STRICT.km_floor (20,000): absolute gaps this small
+#     are already treated as negligible by the matcher, so they are always GOOD.
+#   * GOOD  <= 0.30  == STRICT.km_pct   (a tight comparable)
+#   * MODERATE <= 0.60 == BROAD.km_pct  (still an accepted comparable, but loose)
+#   * LARGE <= 1.00                     (median differs by up to 100%)
+#   * VERY_LARGE > 1.00                 (median differs by more than 100%, e.g.
+#                                        comparables have < half or > double the km)
+# The relative distance uses the SMALLER of (submitted, comparable-median) as the
+# base so the dangerous "high-mileage car vs low-mileage comparables" direction
+# is not numerically compressed (250k vs 100k => 1.50, i.e. VERY_LARGE).
+MILEAGE_NOISE_FLOOR_KM = STRICT.km_floor          # 20,000
+MILEAGE_GOOD_MAX = STRICT.km_pct                  # 0.30
+MILEAGE_MODERATE_MAX = BROAD.km_pct               # 0.60
+MILEAGE_LARGE_MAX = 1.00
+
+# Ordering for capping logic (higher = worse). "unknown" sits above moderate:
+# we could not verify mileage, so it must not qualify for HIGH, but it is not as
+# damning as a measured large gap.
+MILEAGE_RANK = {"good": 0, "moderate": 1, "unknown": 1.5, "large": 2, "very_large": 3}
+
+
+def mileage_similarity(car_km: Optional[int], comp_km) -> dict:
+    """
+    Compare the submitted car's mileage against the distribution of the
+    comparable listings' mileage. Returns a transparent, self-describing dict:
+
+        {
+          "category": good|moderate|large|very_large|unknown,
+          "comp_km_count": <#comparables with known km>,
+          "comp_km_median", "comp_km_p25", "comp_km_p75": robust distribution,
+          "submitted_km": <echo>,
+          "rel_gap": <signed relative gap of the median vs submitted, or None>,
+          "abs_gap_km": <|median - submitted|, or None>,
+          "close_frac": <fraction of comparables within the STRICT band>,
+          "direction": lower|higher|same|unknown  (comparables vs submitted),
+          "note": <human sentence for the confidence reasons>,
+        }
+
+    `comp_km` may be a pandas Series/list of raw km values (NaNs/None ignored).
+    """
+    # Collect known comparable mileages.
+    kms: list[int] = []
+    if comp_km is not None:
+        seq = comp_km.tolist() if isinstance(comp_km, pd.Series) else list(comp_km)
+        for v in seq:
+            iv = _int(v)
+            if iv is not None and iv >= 0:
+                kms.append(iv)
+
+    base = {
+        "category": "unknown",
+        "comp_km_count": len(kms),
+        "comp_km_median": None,
+        "comp_km_p25": None,
+        "comp_km_p75": None,
+        "submitted_km": car_km,
+        "rel_gap": None,
+        "abs_gap_km": None,
+        "close_frac": None,
+        "direction": "unknown",
+        "note": "",
+    }
+
+    if car_km is None:
+        base["note"] = "submitted mileage unknown - could not assess mileage similarity"
+        return base
+    if not kms:
+        base["note"] = "comparable mileage unavailable - could not verify mileage similarity"
+        return base
+
+    s = pd.Series(kms, dtype="float64")
+    med = float(s.median())
+    p25 = float(s.quantile(0.25))
+    p75 = float(s.quantile(0.75))
+    abs_gap = abs(med - car_km)
+
+    # Fraction of comparables inside the engine's STRICT km band around the car.
+    strict_window = max(int(car_km * MILEAGE_GOOD_MAX), MILEAGE_NOISE_FLOOR_KM)
+    close_frac = float(((s - car_km).abs() <= strict_window).mean())
+
+    direction = "same"
+    if med < car_km:
+        direction = "lower"   # comparables have LESS mileage -> value likely overstated
+    elif med > car_km:
+        direction = "higher"  # comparables have MORE mileage -> value likely understated
+
+    # Category: absolute noise floor first, then relative distance off the
+    # smaller base (amplifies the dangerous high-mileage direction).
+    if abs_gap <= MILEAGE_NOISE_FLOOR_KM:
+        category = "good"
+        rel = abs_gap / max(min(med, car_km), 1)
+    else:
+        rel = abs_gap / max(min(med, car_km), 1)
+        if rel <= MILEAGE_GOOD_MAX:
+            category = "good"
+        elif rel <= MILEAGE_MODERATE_MAX:
+            category = "moderate"
+        elif rel <= MILEAGE_LARGE_MAX:
+            category = "large"
+        else:
+            category = "very_large"
+
+    signed_rel = rel if direction == "higher" else (-rel if direction == "lower" else 0.0)
+
+    base.update({
+        "category": category,
+        "comp_km_median": med,
+        "comp_km_p25": p25,
+        "comp_km_p75": p75,
+        "rel_gap": round(signed_rel, 3),
+        "abs_gap_km": int(abs_gap),
+        "close_frac": round(close_frac, 2),
+        "direction": direction,
+        "note": _mileage_note(category, direction, med, car_km),
+    })
+    return base
+
+
+def _mileage_note(category: str, direction: str, comp_median: float, car_km: int) -> str:
+    """Human-readable confidence reason for a mileage category."""
+    if category == "good":
+        return "mileage closely matches comparable listings"
+    dir_word = "lower" if direction == "lower" else "higher"
+    med_s = f"{comp_median:,.0f} km"
+    car_s = f"{car_km:,} km"
+    if category == "moderate":
+        return (f"comparable mileage is somewhat {dir_word} than the submitted car "
+                f"(median {med_s} vs {car_s})")
+    # large / very_large
+    return (f"comparable mileage is substantially {dir_word} than the submitted car "
+            f"(median {med_s} vs {car_s})")
+
+
 def confidence_level(strict_n: int, unknown_frac: float) -> str:
     """Deterministic confidence from sample size and data completeness."""
     if strict_n == 0:
@@ -659,6 +806,12 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
     n = stats.get("count", 0)
     unk = _unknown_fraction(strict)
     warnings: list[str] = []
+    # Mileage similarity of the chosen-tier comparables vs the submitted car.
+    # Computed from the ACTUAL comparable km distribution; never merged across
+    # sources (this runs per source). Does not affect any price figure.
+    mileage = mileage_similarity(
+        car.km, strict["km"] if not strict.empty and "km" in strict.columns else None
+    )
     res = {
         "comparable_count": n,
         "outliers_trimmed": stats.get("outliers_trimmed", 0),
@@ -669,6 +822,9 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
         "confidence": confidence_level(n, unk),
         "insufficient_sample": n < 4,
         "unknown_year_km_frac": round(unk, 2),
+        # --- mileage similarity factor (transparent) ---
+        "mileage_match": mileage["category"],
+        "mileage": mileage,
     }
     if n and car.price:
         med = stats["median"]

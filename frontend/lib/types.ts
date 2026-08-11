@@ -16,6 +16,26 @@ export interface Comparable {
   body_type?: string | null
 }
 
+/* How well this source's comparable mileage matches the submitted car.
+ * 'good' | 'moderate' | 'large' | 'very_large' | 'unknown'. This is an explicit
+ * confidence factor and NEVER changes the price figures. Kept per source —
+ * Autobazar and Bazoš mileage evidence are never merged. */
+export type MileageMatch = 'good' | 'moderate' | 'large' | 'very_large' | 'unknown'
+
+export interface MileageAssessment {
+  category: MileageMatch
+  comp_km_count: number
+  comp_km_median: number | null
+  comp_km_p25: number | null
+  comp_km_p75: number | null
+  submitted_km: number | null
+  rel_gap: number | null
+  abs_gap_km: number | null
+  close_frac: number | null
+  direction: 'lower' | 'higher' | 'same' | 'unknown'
+  note: string
+}
+
 export interface SourceResult {
   tier: string | null
   comparable_count: number
@@ -29,6 +49,8 @@ export interface SourceResult {
   outliers_trimmed: number
   sample_warning: string
   retrieval_error: string | null
+  mileage_match: MileageMatch
+  mileage: MileageAssessment
   comparables: Comparable[]
 }
 
@@ -198,6 +220,11 @@ export interface AnalysisSourceResult {
   insufficient: boolean
   example_links: string[]
   error: string | null
+  mileage_match: MileageMatch
+  comp_km_median: number | null
+  comp_km_p25: number | null
+  comp_km_p75: number | null
+  mileage_note: string
 }
 
 export interface AnalysisCarResult {

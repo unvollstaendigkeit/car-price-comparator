@@ -1,9 +1,10 @@
 "use client"
 
 import type { SourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtPct, fmtPctPlain, tierLabel, valuationTone } from "@/lib/format"
+import { cn, fmtEur, fmtKm, fmtPct, fmtPctPlain, tierLabel, valuationTone } from "@/lib/format"
 import { ComparablesTable } from "./comparables-table"
 import { Disclosure } from "./disclosure"
+import { MileageNotice } from "./mileage-notice"
 
 const SOURCE_META: Record<string, { name: string; host: string }> = {
   autobazar: { name: "Autobazar.eu", host: "autobazar.eu" },
@@ -98,6 +99,21 @@ export function SourceCard({
                 </span>
               </div>
             )}
+
+            {/* Mileage-similarity signal — sits right under the valuation so a
+                mileage mismatch is impossible to miss. Per source; never merged. */}
+            {data.mileage && (
+              <MileageNotice
+                className="mt-4"
+                match={data.mileage_match}
+                compMedian={data.mileage.comp_km_median}
+                compP25={data.mileage.comp_km_p25}
+                compP75={data.mileage.comp_km_p75}
+                submittedKm={data.mileage.submitted_km}
+                direction={data.mileage.direction}
+                note={data.mileage.note}
+              />
+            )}
           </div>
 
           {/* Concise sample caution */}
@@ -117,6 +133,16 @@ export function SourceCard({
                   label="Price range (P25–P75)"
                   value={`${fmtEur(data.market_p25_eur)} – ${fmtEur(data.market_p75_eur)}`}
                 />
+                {data.mileage && data.mileage.comp_km_median !== null && (
+                  <>
+                    <Row label="Comparable mileage (median)" value={fmtKm(data.mileage.comp_km_median)} />
+                    <Row
+                      label="Comparable mileage (P25–P75)"
+                      value={`${fmtKm(data.mileage.comp_km_p25)} – ${fmtKm(data.mileage.comp_km_p75)}`}
+                    />
+                    <Row label="This car's mileage" value={fmtKm(data.mileage.submitted_km)} />
+                  </>
+                )}
                 <Row label="Comparable cars" value={String(data.comparable_count)} />
                 {data.outliers_trimmed > 0 && (
                   <Row label="Outliers trimmed" value={String(data.outliers_trimmed)} />

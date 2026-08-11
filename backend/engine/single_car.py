@@ -168,6 +168,11 @@ def _source_result(est: dict, matched: pd.DataFrame, err: str) -> dict:
         "outliers_trimmed": est["outliers_trimmed"],
         "sample_warning": est.get("sample_warning") or "",
         "retrieval_error": err or None,
+        # Mileage similarity of THIS source's comparables (never merged with the
+        # other source). `mileage_match` is the category; `mileage` is the full
+        # transparent breakdown (median/P25/P75, gap, direction, note).
+        "mileage_match": est["mileage_match"],
+        "mileage": est["mileage"],
         "comparables": _comparables(matched),
     }
 
