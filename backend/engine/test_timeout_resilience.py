@@ -365,6 +365,65 @@ def test_each_model_gets_a_fresh_budget():
     assert retr and not retr[0]["ab_timed_out"] and not retr[0]["bz_timed_out"]
 
 
+# --------------------------------------------------------------------------- #
+# 6. OVERALL run budget: protect the serverless function limit. Stop starting
+#    new LIVE models before the platform kill so a summary always arrives.
+# --------------------------------------------------------------------------- #
+def test_overall_run_budget_truncates_cleanly():
+    """With a run budget that only fits one live model, the second is skipped
+    but the run still emits a clean summary flagged run_truncated — never a hang
+    or a mid-stream kill. This is what keeps the SSE stream inside maxDuration."""
+    prov = _BudgetProvider(slow_model="none")  # both models fast + live
+    # model_budget 5s, run_budget 5s: after the first model, now+5 > deadline so
+    # the second live model is not started.
+    events = list(inv.analyze_inventory(
+        _rows(), provider=prov, model_budget_s=5.0, run_budget_s=5.0,
+    ))
+    stages = [e["stage"] for e in events]
+
+    # Exactly one run_truncated event, and it accounts for the skipped model.
+    truncs = [e for e in events if e["stage"] == "run_truncated"]
+    assert len(truncs) == 1, f"expected 1 run_truncated, got {len(truncs)}"
+    assert truncs[0]["analyzed_groups"] == 1
+    assert truncs[0]["skipped_groups"] == 1
+    assert truncs[0]["total_groups"] == 2
+
+    # A summary STILL arrives (stream closes cleanly) and is flagged truncated.
+    summary = next(e for e in events if e["stage"] == "summary")
+    assert summary["run_truncated"] is True
+    # Only the first model's cars were analyzed; the run did not error.
+    assert summary["counts"]["analyzed"] == 1
+    assert "error" not in stages
+
+
+def test_cached_models_run_even_when_run_budget_is_spent():
+    """The run-budget early stop must apply only to LIVE models; cached models
+    cost no network time and must always be allowed to finish."""
+    class _AllCached:
+        def peek(self, source, car, pages):
+            # Advisory: tells the run this source is served from cache (no fetch),
+            # which is what keeps the run-budget early-stop from truncating it.
+            return {"from_cache": True, "age_s": 10.0}
+
+        def retrieve(self, source, car, pages, deadline=None):
+            df = pd.DataFrame([{
+                "url": f"http://{source}/{car.model}", "price_eur": 8000,
+                "year": 2016, "km": 150000, "title": f"{car.brand} {car.model}",
+                "source": source,
+            }])
+            return RetrieveResult(df=df, err="", elapsed_s=0.0, http_requests=0,
+                                  from_cache=True, age_s=10.0)
+
+    # Even with a zero run budget, cached models are not truncated.
+    events = list(inv.analyze_inventory(
+        _rows(), provider=_AllCached(), model_budget_s=5.0, run_budget_s=0.0,
+    ))
+    assert not any(e["stage"] == "run_truncated" for e in events)
+    summary = next(e for e in events if e["stage"] == "summary")
+    assert summary["counts"]["analyzed"] == 2
+    assert summary["run_truncated"] is False
+
+
 class _MonkeyPatch:
     """Tiny standalone monkeypatch (setattr + undo) for the __main__ runner."""
     def __init__(self):

@@ -10,7 +10,7 @@
       "entrypoint": "main:app",
       "functions": {
         "main.py": {
-          "maxDuration": 60
+          "maxDuration": 300
         }
       }
     }

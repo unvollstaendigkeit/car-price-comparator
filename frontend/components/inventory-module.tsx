@@ -431,8 +431,9 @@ function fmtSecs(s: number): string {
 
 // Mirrors MODEL_BUDGET_S in backend/engine/inventory_run.py. Used only to colour
 // the live per-model timer as it approaches the budget; the backend is the real
-// enforcer, so a small drift here is purely cosmetic.
-const MODEL_BUDGET_S = 90
+// enforcer, so a small drift here is purely cosmetic. The finished summary
+// carries the authoritative value in `model_budget_s`.
+const MODEL_BUDGET_S = 25
 
 function formatAge(ageS: number | null): string {
   if (ageS == null) return ""
@@ -532,6 +533,12 @@ function AnalysisPanel({
           case "source_disabled":
             setNotices((n) => [...n, `${e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"}: ${e.reason}`])
             break
+          case "run_truncated":
+            setNotices((n) => [
+              ...n,
+              `Reached the overall time limit — analyzed ${e.analyzed_groups} of ${e.total_groups} models and returned results for those. ${e.skipped_groups} model(s) were skipped; re-run to continue (cached models will be instant).`,
+            ])
+            break
           case "car_done":
             setResults((r) => [...r, e.car])
             setProgress((p) => ({ ...p, analyzed: e.analyzed, total: e.total }))
@@ -547,6 +554,7 @@ function AnalysisPanel({
               errors_total: e.errors_total,
               model_timeouts: e.model_timeouts,
               model_budget_s: e.model_budget_s,
+              run_truncated: e.run_truncated,
               ranked: e.ranked,
               benchmark: e.benchmark,
             })
