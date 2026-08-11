@@ -14,6 +14,8 @@ Covers the fixes for the "run hangs forever on a slow source" problem:
 
 These run without network by monkeypatching the scraper fetch() / provider.
 """
+import socket
+import threading
 import time
 import types
 
@@ -24,6 +26,75 @@ import phase6_validate as p6
 import inventory_run as inv
 from market_provider import RetrieveResult
 from single_car import SingleCarInput
+
+
+# --------------------------------------------------------------------------- #
+# 0. THE regression: a server that accepts but never replies (the real CX-5
+#    hang). Proves the HARD wall-clock cap bounds the whole request, including
+#    the connect/header phase that requests' (connect, read) tuple can't bound.
+# --------------------------------------------------------------------------- #
+class _SilentServer:
+    """Accepts TCP connections and then holds them open forever, sending nothing
+    (mimics a server that stalls during the response-header phase)."""
+    def __init__(self):
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(8)
+        self.port = self._sock.getsockname()[1]
+        self._held: list[socket.socket] = []
+        self._stop = False
+        self._t = threading.Thread(target=self._serve, daemon=True)
+        self._t.start()
+
+    def _serve(self):
+        while not self._stop:
+            try:
+                self._sock.settimeout(0.2)
+                conn, _ = self._sock.accept()
+                self._held.append(conn)  # hold open, never write a response
+            except (socket.timeout, OSError):
+                continue
+
+    def close(self):
+        self._stop = True
+        for c in self._held:
+            try:
+                c.close()
+            except OSError:
+                pass
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+def test_hard_cap_bounds_a_silent_server():
+    """A GET against a server that never responds must return (raise
+    FetchTimeout) within ~total_deadline_s — NOT hang until read_timeout stacks
+    up. This is the exact failure that stalled the run on one model."""
+    server = _SilentServer()
+    http_client.reset_log()
+    try:
+        url = f"http://127.0.0.1:{server.port}/never-answers"
+        t0 = time.perf_counter()
+        raised = False
+        try:
+            http_client.get_bounded(
+                url, {"User-Agent": "test"},
+                source="autobazar", brand="VW", model="Golf", page=1,
+                total_deadline_s=1.5,
+            )
+        except http_client.FetchTimeout:
+            raised = True
+        elapsed = time.perf_counter() - t0
+        assert raised, "a silent server must surface as FetchTimeout"
+        # Returned close to the cap, not after read_timeout gaps stacked up.
+        assert elapsed < 3.0, f"hard cap must bound the call, took {elapsed:.2f}s"
+        # Recorded EXACTLY once despite the watchdog/worker race.
+        assert http_client.request_count() == 1
+    finally:
+        server.close()
 
 
 # --------------------------------------------------------------------------- #

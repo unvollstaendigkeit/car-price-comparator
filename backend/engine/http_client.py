@@ -157,6 +157,28 @@ def last_record() -> Optional[RequestRecord]:
         return _log.records[-1] if _log.records else None
 
 
+class _RecordOnce:
+    """
+    Guarantees a request is recorded EXACTLY once even though two threads may
+    race to finish it: the worker doing the blocking GET, and the watchdog that
+    abandons the worker when it overruns the hard wall-clock cap. Whoever calls
+    `claim()` first wins and records; the loser is a no-op. Without this an
+    abandoned-then-eventually-failing request would be double-counted.
+    """
+    __slots__ = ("_claimed", "_lock")
+
+    def __init__(self) -> None:
+        self._claimed = False
+        self._lock = threading.Lock()
+
+    def claim(self) -> bool:
+        with self._lock:
+            if self._claimed:
+                return False
+            self._claimed = True
+            return True
+
+
 # --------------------------------------------------------------------------- #
 # The bounded GET
 # --------------------------------------------------------------------------- #
@@ -176,12 +198,85 @@ def get_bounded(
     """
     Perform ONE bounded GET. Returns (status_code, text, response_headers).
 
-    Guarantees a finite worst case: the connection phase is bounded by
-    (redirects+1) x (connect+read) and the body phase by `total_deadline_s`.
+    HARD wall-clock guarantee: this call returns (or raises FetchTimeout) within
+    ~`total_deadline_s`, FULL STOP — including the connect and response-header
+    phase. requests' `(connect, read)` tuple only bounds per-operation GAPS, so
+    a server that trickles bytes during the header phase (or chains redirects)
+    can otherwise keep `session.get()` alive far past `total_deadline_s`. We
+    therefore run the blocking GET on a worker thread and, if it overruns the
+    ceiling, ABANDON it and raise FetchTimeout so the caller (and thus the whole
+    inventory run) is never parked on one slow request. The abandoned socket
+    dies on its own connect/read timeout shortly after; the exactly-once guard
+    ensures it is never double-counted.
+
     Raises FetchTimeout on deadline/size overrun; re-raises requests'
-    RequestException for connect/DNS/reset errors (callers decide how to map
-    those). Every outcome is recorded exactly once.
+    RequestException for connect/DNS/reset errors. Every outcome is recorded
+    exactly once.
     """
+    guard = _RecordOnce()
+    box: dict = {}
+    done = threading.Event()
+
+    def _work() -> None:
+        try:
+            box["result"] = _get_bounded_blocking(
+                url, headers, source=source, brand=brand, model=model, page=page,
+                connect_timeout=connect_timeout, read_timeout=read_timeout,
+                total_deadline_s=total_deadline_s, max_bytes=max_bytes, guard=guard,
+            )
+        except BaseException as exc:  # noqa: BLE001 - carried back to the caller
+            box["error"] = exc
+        finally:
+            done.set()
+
+    worker = threading.Thread(
+        target=_work, name=f"get_bounded:{source}:p{page}", daemon=True,
+    )
+    t0 = time.perf_counter()
+    start_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    worker.start()
+
+    # Small grace so the blocking core's own precise timeout/size check wins the
+    # race when it can (nicer record), while still guaranteeing an upper bound.
+    if not done.wait(total_deadline_s + 0.5):
+        # Overran the hard ceiling -> abandon the worker and move on. Record the
+        # timeout ourselves IFF the worker hasn't already recorded its outcome.
+        if guard.claim():
+            _append(RequestRecord(
+                source=source, brand=brand, model=model, page=page, url=url,
+                start_iso=start_iso,
+                end_iso=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                duration_s=time.perf_counter() - t0,
+                status=None, outcome="timeout", bytes=0,
+                error=(f"abandoned after exceeding {total_deadline_s:.1f}s hard "
+                       f"wall-clock cap (connect/header/body phase)"),
+            ))
+        raise FetchTimeout(
+            f"{url!r}: exceeded {total_deadline_s:.1f}s hard wall-clock cap"
+        )
+
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _get_bounded_blocking(
+    url: str,
+    headers: dict,
+    *,
+    source: str,
+    brand: str,
+    model: str,
+    page: int,
+    connect_timeout: float,
+    read_timeout: float,
+    total_deadline_s: float,
+    max_bytes: int,
+    guard: _RecordOnce,
+) -> tuple[int, str, dict]:
+    """The actual blocking GET. Runs on a worker thread under get_bounded's hard
+    wall-clock cap. Records its outcome exactly once via `guard` (the watchdog
+    may have already claimed the record if this thread was abandoned)."""
     t0 = time.perf_counter()
     start_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     status: Optional[int] = None
@@ -189,7 +284,10 @@ def get_bounded(
     outcome = "ok"
     error = ""
 
-    def _finish(text_len_note: str = "") -> None:  # noqa: ARG001 - kept for clarity
+    def _finish() -> None:
+        # Only record if the watchdog didn't already abandon+record this request.
+        if not guard.claim():
+            return
         _append(RequestRecord(
             source=source, brand=brand, model=model, page=page, url=url,
             start_iso=start_iso,
