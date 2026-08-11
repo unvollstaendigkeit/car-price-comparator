@@ -1,0 +1,15 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Car valuation API wrapping the comparison engine"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.128.1",
+    "python-multipart>=0.0.9",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.2",
+    "openpyxl>=3.1",
+]

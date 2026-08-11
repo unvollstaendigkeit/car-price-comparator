@@ -1,0 +1,77 @@
+@import 'tailwindcss';
+
+/*
+  Design direction: technical market-intelligence instrument panel.
+  Dark, data-forward, restrained. One signal accent (cyan). Status colors are
+  load-bearing semantics, never decoration:
+    positive  = car cheaper than market (a find)
+    negative  = car more expensive than market
+    caution   = thin / low-confidence
+    muted     = insufficient / no data
+    danger    = retrieval failure
+*/
+
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --color-background: oklch(0.17 0.012 250);
+  --color-surface: oklch(0.213 0.014 252);
+  --color-surface-2: oklch(0.255 0.016 252);
+  --color-border: oklch(0.31 0.016 252);
+  --color-border-strong: oklch(0.4 0.02 252);
+
+  --color-foreground: oklch(0.95 0.006 250);
+  --color-muted: oklch(0.72 0.014 252);
+  --color-faint: oklch(0.56 0.014 252);
+
+  --color-accent: oklch(0.78 0.13 195);
+  --color-accent-foreground: oklch(0.17 0.012 250);
+
+  --color-positive: oklch(0.78 0.15 155);
+  --color-positive-soft: oklch(0.3 0.06 155);
+  --color-negative: oklch(0.72 0.15 45);
+  --color-negative-soft: oklch(0.3 0.07 45);
+  --color-caution: oklch(0.82 0.14 90);
+  --color-danger: oklch(0.66 0.19 25);
+  --color-danger-soft: oklch(0.32 0.1 25);
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    background-color: var(--color-background);
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-foreground);
+  }
+  /* tabular numerals everywhere numbers matter */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  /* thin custom scrollbars for dense tables */
+  ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
