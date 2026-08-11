@@ -1,0 +1,127 @@
+Inventory loaded; restricting to 20 target row(s): [5, 12, 14, 15, 20, 21, 24, 33, 37, 42, 43, 49, 50, 51, 57, 73, 74, 78, 80, 87]
+[1/20] #5 Subaru Impreza Petrol 2019 EUR 11000
+    retrieved subaru/impreza: AB=14 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 161.8% | INSUFFICIENT
+[2/20] #12 Skoda Superb Petrol 2019 EUR 16000
+    retrieved skoda/superb: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[3/20] #14 BMW X1 Petrol 2018 EUR 11500
+    retrieved bmw/x1: AB=60 BZ=60
+    -> AB 2@broad 43.9% | BZ 3@broad 31.3% | INSUFFICIENT
+[4/20] #15 Volkswagen Passat Petrol 2017 EUR 10800
+    retrieved volkswagen/passat: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[5/20] #20 Mazda 3 Petrol 2019 EUR 10250
+    retrieved mazda/3: AB=60 BZ=60
+    -> AB 3@broad 70.7% | BZ 5@broad -56.1% | LOW
+[6/20] #21 Renault Mégane PHEV 2020 EUR 11500
+    retrieved renault/mégane: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 39.0% | INSUFFICIENT
+[7/20] #24 VW Golf PHEV 2018 EUR 9900
+    retrieved vw/golf: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[8/20] #33 BMW X3 Petrol 2019 EUR 20000
+    retrieved bmw/x3: AB=60 BZ=60
+    -> AB 2@broad 48.7% | BZ 1@broad 32.5% | INSUFFICIENT
+[9/20] #37 BMW 3 Series Petrol 2019 EUR 13500
+    retrieved bmw/3 series: AB=59 BZ=60
+    -> AB 3@broad 77.8% | BZ 2@broad 40.3% | INSUFFICIENT
+[10/20] #42 Peugeot 3008 Hybrid 2020 EUR 15000
+    retrieved peugeot/3008: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 1@broad -6.7% | INSUFFICIENT
+[11/20] #43 Mercedes Gla-Class Petrol 2017 EUR 9800
+    retrieved mercedes/gla-class: AB=60 BZ=60
+    -> AB 4@broad 66.3% | BZ 3@broad 7.1% | MEDIUM
+[12/20] #49 Audi A5 Petrol 2016 EUR 7500
+    retrieved audi/a5: AB=50 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 25.3% | INSUFFICIENT
+[13/20] #50 Ford S-Max Petrol 2017 EUR 3800
+    retrieved ford/s-max: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 10@broad 140.8% | LOW
+[14/20] #51 Mercedes B-Class Petrol 2015 EUR 6800
+    retrieved mercedes/b-class: AB=60 BZ=60
+    -> AB 2@broad 18.4% | BZ 1@broad 138.1% | INSUFFICIENT
+[15/20] #57 VW Passat Diesel 2006 EUR 900
+    retrieved vw/passat: AB=60 BZ=60
+    -> AB 7@moderate 176.7% | BZ 3@broad None% | MEDIUM
+[16/20] #73 BMW 3 Series Petrol 2019 EUR 14000
+    -> AB 3@broad 71.4% | BZ 2@broad 35.3% | INSUFFICIENT
+[17/20] #74 BMW 318d Diesel 2009 EUR 1600
+    retrieved bmw/318d: AB=60 BZ=60 [AB:category slug bmw/318d 404 -> keyword fallback]
+    -> AB 5@moderate 212.5% | BZ 6@broad 287.5% | MEDIUM
+[18/20] #78 BMW 2 Series Petrol 2020 EUR 9000
+    retrieved bmw/2 series: AB=31 BZ=60 [AB:category slug bmw/2-series 404 -> keyword fallback]
+    -> AB 0@broad None% | BZ 6@broad 132.2% | LOW
+[19/20] #80 Volkswagen Touran Petrol 2018 EUR 12200
+    retrieved volkswagen/touran: AB=60 BZ=60
+    -> AB 4@broad 26.1% | BZ 1@broad -69.7% | MEDIUM
+[20/20] #87 Mercedes A-Class Petrol 2017 EUR 9500
+    retrieved mercedes/a-class: AB=60 BZ=60
+    -> AB 3@broad 112.6% | BZ 0@broad None% | INSUFFICIENT
+
+======================================================================
+DIAGNOSTIC SUMMARY
+======================================================================
+Total inventory cars processed : 20
+
+Confidence flags:
+  HIGH        : 0
+  MEDIUM      : 4
+  LOW         : 3
+  INSUFFICIENT: 13
+
+Source coverage (>=1 comparable):
+  Autobazar data : 11/20
+  Bazos data     : 16/20
+  BOTH sources   : 10/20
+Source coverage (>=4 usable comparables):
+  Autobazar usable: 4/20
+  Bazos usable    : 4/20
+
+Significant cross-source disagreement (>30% median spread): 5
+
+Models most frequently producing INSUFFICIENT samples:
+   2x  BMW 3 Series
+   1x  Subaru Impreza
+   1x  Skoda Superb
+   1x  BMW X1
+   1x  Volkswagen Passat
+   1x  Renault Mégane
+   1x  VW Golf
+   1x  BMW X3
+   1x  Peugeot 3008
+   1x  Audi A5
+   1x  Mercedes B-Class
+   1x  Mercedes A-Class
+
+Models with retrieval failure (no listings from either source):
+   1x  Skoda Superb
+   1x  Volkswagen Passat
+   1x  VW Golf
+
+======================================================================
+RANKED - most below market (top 15)
+======================================================================
+ row_index      brand     model  year  inventory_price_eur  ab_price_diff_pct  bz_price_diff_pct rank_source  rank_price_diff_pct confidence_flag
+        74        BMW      318d  2009                 1600              212.5              287.5       bazos                287.5          MEDIUM
+        57         VW    Passat  2006                  900              176.7                NaN   autobazar                176.7          MEDIUM
+         5     Subaru   Impreza  2019                11000                NaN              161.8       bazos                161.8    INSUFFICIENT
+        50       Ford     S-Max  2017                 3800                NaN              140.8       bazos                140.8             LOW
+        78        BMW  2 Series  2020                 9000                NaN              132.2       bazos                132.2             LOW
+        87   Mercedes   A-Class  2017                 9500              112.6                NaN   autobazar                112.6    INSUFFICIENT
+        37        BMW  3 Series  2019                13500               77.8               40.3   autobazar                 77.8    INSUFFICIENT
+        73        BMW  3 Series  2019                14000               71.4               35.3   autobazar                 71.4    INSUFFICIENT
+        43   Mercedes Gla-Class  2017                 9800               66.3                7.1   autobazar                 66.3          MEDIUM
+        33        BMW        X3  2019                20000               48.7               32.5   autobazar                 48.7    INSUFFICIENT
+        21    Renault    Mégane  2020                11500                NaN               39.0       bazos                 39.0    INSUFFICIENT
+        14        BMW        X1  2018                11500               43.9               31.3       bazos                 31.3    INSUFFICIENT
+        80 Volkswagen    Touran  2018                12200               26.1              -69.7   autobazar                 26.1          MEDIUM
+        49       Audi        A5  2016                 7500                NaN               25.3       bazos                 25.3    INSUFFICIENT
+        51   Mercedes   B-Class  2015                 6800               18.4              138.1   autobazar                 18.4    INSUFFICIENT
+
+Saved:
+  phase7_rerun2/master_summary.csv
+  phase7_rerun2/ranked_report.csv
+  phase7_rerun2/insufficient_report.csv
+  phase7_rerun2/diagnostics.txt
+  phase7_rerun2/comparables_car*_*.csv  (per-car per-source comparables)
