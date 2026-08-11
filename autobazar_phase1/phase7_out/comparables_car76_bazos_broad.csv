@@ -1,0 +1,4 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+bazos,194249701,"suzuki vitara 1,4b allgrip automat",,,2016.0,,103.0,Automatic,,13950.0,https://auto.bazos.sk/inzerat/194249701/suzuki-vitara-14b-allgrip-automat.php,match,match,unknown,n/a,match,unknown,n/a,n/a
+bazos,194352325,"SUZUKI VITARA 1,4 BoosterJet, 2021, 66 500km, Kúpené v SR",,,2021.0,66500.0,95.0,,,14250.0,https://auto.bazos.sk/inzerat/194352325/suzuki-vitara-14-boosterjet-2021-66-500km-kupene-v-sr.php,match,match,unknown,n/a,match,match,n/a,n/a
+bazos,194466044,Suzuki Vitara 1.5 DualJet HEV 2024 44.340km,,Petrol,,44340.0,,,SUV,19690.0,https://auto.bazos.sk/inzerat/194466044/suzuki-vitara-15-dualjet-hev-2024-44340km.php,match,match,match,n/a,unknown,match,n/a,n/a

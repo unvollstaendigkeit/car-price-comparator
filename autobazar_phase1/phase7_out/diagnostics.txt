@@ -1,0 +1,65 @@
+
+======================================================================
+DIAGNOSTIC SUMMARY
+======================================================================
+Total inventory cars processed : 98
+
+Confidence flags:
+  HIGH        : 18
+  MEDIUM      : 42
+  LOW         : 8
+  INSUFFICIENT: 30
+
+Source coverage (>=1 comparable):
+  Autobazar data : 84/98
+  Bazos data     : 85/98
+  BOTH sources   : 79/98
+Source coverage (>=4 usable comparables):
+  Autobazar usable: 60/98
+  Bazos usable    : 37/98
+
+Significant cross-source disagreement (>30% median spread): 15
+
+Models most frequently producing INSUFFICIENT samples:
+   4x  Nissan Qashqai
+   2x  Volkswagen Passat
+   2x  BMW 3 Series
+   1x  Nissan X-Trail
+   1x  Subaru Impreza
+   1x  Volkswagen Golf Sportsvan
+   1x  Skoda Superb
+   1x  BMW X1
+   1x  Renault Mégane
+   1x  Toyota Verso
+   1x  VW Golf
+   1x  Mazda Cx-5
+
+Models with retrieval failure (no listings from either source):
+   2x  BMW 3 Series
+   1x  Skoda Superb
+   1x  Volkswagen Passat
+   1x  VW Golf
+   1x  Mercedes Gla-Class
+   1x  Mercedes B-Class
+   1x  Renault Austral
+   1x  BMW 2 Series
+
+======================================================================
+RANKED - most below market (top 15)
+======================================================================
+ row_index      brand    model  year  inventory_price_eur  ab_price_diff_pct  bz_price_diff_pct rank_source  rank_price_diff_pct confidence_flag
+        74        BMW     318d  2009                 1600               68.0               74.2       bazos                 74.2          MEDIUM
+        57         VW   Passat  2006                  900               63.9               93.8   autobazar                 63.9          MEDIUM
+         5     Subaru  Impreza  2019                11000                NaN               61.8       bazos                 61.8    INSUFFICIENT
+        58    Peugeot     2008  2014                 2500               62.7               59.7       bazos                 59.7    INSUFFICIENT
+        87   Mercedes  A-Class  2017                 9500                NaN               58.5       bazos                 58.5    INSUFFICIENT
+        28      Dacia   Duster  2014                 2300               57.8               71.2   autobazar                 57.8          MEDIUM
+        50       Ford    S-Max  2017                 3800                NaN               56.0       bazos                 56.0             LOW
+        22       Opel Insignia  2014                 2400               53.8               61.6   autobazar                 53.8          MEDIUM
+        19       Audi       Q3  2018                10800               51.7               66.8   autobazar                 51.7          MEDIUM
+        59       Opel    Astra  2017                 3200               50.0               58.4   autobazar                 50.0          MEDIUM
+        77         VW     ID.3  2021                 9000               48.6               44.4   autobazar                 48.6            HIGH
+        35 Volkswagen     Golf  2019                 7500               27.2               46.0       bazos                 46.0          MEDIUM
+        29     Nissan  Qashqai  2021                13000               44.7               18.7   autobazar                 44.7    INSUFFICIENT
+         6     Toyota    Auris  2015                 7200               43.8                1.4   autobazar                 43.8          MEDIUM
+        82 Volkswagen   Passat  2018                 8500               43.3                NaN   autobazar                 43.3    INSUFFICIENT

@@ -1,0 +1,329 @@
+Inventory loaded: 98 cars.
+[1/98] #0 Hyundai I30 Petrol 2023 EUR 11600
+    retrieved hyundai/i30: AB=60 BZ=60
+    -> AB 5@broad 25.1% | BZ 4@moderate -5.6% | MEDIUM
+[2/98] #1 Nissan X-Trail Petrol 2020 EUR 12950
+    retrieved nissan/x-trail: AB=60 BZ=60
+    -> AB 2@broad 7.5% | BZ 1@broad -8.0% | INSUFFICIENT
+[3/98] #2 Mazda Cx-5 Petrol 2020 EUR 15950
+    retrieved mazda/cx-5: AB=60 BZ=60
+    -> AB 4@broad 29.9% | BZ 5@broad 24.0% | HIGH
+[4/98] #3 Honda Jazz Petrol 2017 EUR 6000
+    retrieved honda/jazz: AB=25 BZ=60
+    -> AB 3@broad 13.0% | BZ 4@broad 22.0% | LOW
+[5/98] #4 Toyota Rav4 Hybrid 2019 EUR 17000
+    retrieved toyota/rav4: AB=60 BZ=60
+    -> AB 9@broad 43.3% | BZ 3@broad 36.8% | MEDIUM
+[6/98] #5 Subaru Impreza Petrol 2019 EUR 11000
+    retrieved subaru/impreza: AB=14 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 61.8% | INSUFFICIENT
+[7/98] #6 Toyota Auris Hybrid 2015 EUR 7200
+    retrieved toyota/auris: AB=46 BZ=60
+    -> AB 4@moderate 43.8% | BZ 3@broad 1.4% | MEDIUM
+[8/98] #7 Peugeot 2008 Petrol 2024 EUR 13400
+    retrieved peugeot/2008: AB=60 BZ=60
+    -> AB 6@moderate 37.6% | BZ 3@broad 13.5% | LOW
+[9/98] #8 Skoda Karoq Petrol 2020 EUR 15000
+    retrieved skoda/karoq: AB=60 BZ=60
+    -> AB 6@moderate 27.7% | BZ 6@broad 28.6% | HIGH
+[10/98] #9 Seat Toledo Petrol 2016 EUR 4500
+    retrieved seat/toledo: AB=25 BZ=59
+    -> AB 6@moderate 30.2% | BZ 0@broad None% | MEDIUM
+[11/98] #10 Volkswagen Golf Sportsvan Petrol 2018 EUR 13000
+    retrieved volkswagen/golf sportsvan: AB=60 BZ=60
+    -> AB 3@broad -4.8% | BZ 0@broad None% | INSUFFICIENT
+[12/98] #11 Skoda Kamiq Petrol 2021 EUR 12850
+    retrieved skoda/kamiq: AB=60 BZ=60
+    -> AB 23@moderate 10.1% | BZ 4@broad 20.4% | HIGH
+[13/98] #12 Skoda Superb Petrol 2019 EUR 16000
+    retrieved skoda/superb: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[14/98] #13 Nissan Qashqai Petrol 2022 EUR 18500
+    retrieved nissan/qashqai: AB=60 BZ=60
+    -> AB 3@broad 21.3% | BZ 1@broad -15.6% | INSUFFICIENT
+[15/98] #14 BMW X1 Petrol 2018 EUR 11500
+    retrieved bmw/x1: AB=60 BZ=60
+    -> AB 2@broad 30.5% | BZ 3@broad 23.8% | INSUFFICIENT
+[16/98] #15 Volkswagen Passat Petrol 2017 EUR 10800
+    retrieved volkswagen/passat: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[17/98] #16 Nissan Qashqai Petrol 2018 EUR 7000
+    -> AB 2@broad 43.5% | BZ 3@broad 27.8% | INSUFFICIENT
+[18/98] #17 Seat Leon Diesel 2016 EUR 6000
+    retrieved seat/leon: AB=60 BZ=60
+    -> AB 5@broad -15.4% | BZ 3@broad 31.0% | MEDIUM
+[19/98] #18 Suzuki Vitara Petrol 2020 EUR 13000
+    retrieved suzuki/vitara: AB=60 BZ=60
+    -> AB 12@moderate 10.3% | BZ 2@broad 23.4% | MEDIUM
+[20/98] #19 Audi Q3 Petrol 2018 EUR 10800
+    retrieved audi/q3: AB=60 BZ=60
+    -> AB 6@moderate 51.7% | BZ 1@broad 66.8% | MEDIUM
+[21/98] #20 Mazda 3 Petrol 2019 EUR 10250
+    retrieved mazda/3: AB=60 BZ=60
+    -> AB 3@broad 41.4% | BZ 5@broad -127.8% | LOW
+[22/98] #21 Renault Mégane PHEV 2020 EUR 11500
+    retrieved renault/mégane: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 28.1% | INSUFFICIENT
+[23/98] #22 Opel Insignia Diesel 2014 EUR 2400
+    retrieved opel/insignia: AB=60 BZ=60
+    -> AB 8@moderate 53.8% | BZ 7@broad 61.6% | MEDIUM
+[24/98] #23 Toyota Verso Petrol 2018 EUR 7100
+    retrieved toyota/verso: AB=22 BZ=60
+    -> AB 2@broad 18.4% | BZ 0@broad None% | INSUFFICIENT
+[25/98] #24 VW Golf PHEV 2018 EUR 9900
+    retrieved vw/golf: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[26/98] #25 Mazda Cx-5 Petrol 2022 EUR 22300
+    -> AB 3@broad 21.8% | BZ 2@broad -21.2% | INSUFFICIENT
+[27/98] #26 Skoda Kodiaq Petrol 2019 EUR 13600
+    retrieved skoda/kodiaq: AB=60 BZ=60
+    -> AB 8@moderate 39.3% | BZ 5@moderate 37.9% | HIGH
+[28/98] #27 Suzuki Vitara Petrol 2018 EUR 12000
+    -> AB 5@strict 15.5% | BZ 3@broad 15.8% | MEDIUM
+[29/98] #28 Dacia Duster Diesel 2014 EUR 2300
+    retrieved dacia/duster: AB=60 BZ=60
+    -> AB 8@broad 57.8% | BZ 3@broad 71.2% | MEDIUM
+[30/98] #29 Nissan Qashqai Petrol 2021 EUR 13000
+    -> AB 3@broad 44.7% | BZ 1@broad 18.7% | INSUFFICIENT
+[31/98] #30 Mazda Cx-3 Petrol 2019 EUR 15000
+    retrieved mazda/cx-3: AB=42 BZ=60
+    -> AB 3@moderate -0.7% | BZ 4@broad 9.9% | LOW
+[32/98] #31 Renault Captur Petrol 2020 EUR 12700
+    retrieved renault/captur: AB=60 BZ=60
+    -> AB 4@moderate 87.2% | BZ 7@broad -33.7% | LOW
+[33/98] #32 Toyota Auris Hybrid 2018 EUR 7800
+    -> AB 6@broad 31.9% | BZ 1@broad 22.0% | MEDIUM
+[34/98] #33 BMW X3 Petrol 2019 EUR 20000
+    retrieved bmw/x3: AB=60 BZ=60
+    -> AB 2@broad 32.8% | BZ 1@broad 24.5% | INSUFFICIENT
+[35/98] #34 Skoda Karoq Petrol 2021 EUR 18500
+    -> AB 9@moderate 19.5% | BZ 5@broad 24.5% | HIGH
+[36/98] #35 Volkswagen Golf Petrol 2019 EUR 7500
+    retrieved volkswagen/golf: AB=60 BZ=60
+    -> AB 3@broad 27.2% | BZ 5@broad 46.0% | MEDIUM
+[37/98] #36 Nissan Qashqai Petrol 2017 EUR 6500
+    -> AB 4@broad 35.6% | BZ 2@broad 26.1% | MEDIUM
+[38/98] #37 BMW 3 Series Petrol 2019 EUR 13500
+    retrieved bmw/3 series: AB=32 BZ=60 [AB:category slug bmw/3-series 404 -> keyword fallback]
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[39/98] #38 Toyota Auris Hybrid 2018 EUR 10200
+    -> AB 4@moderate 20.5% | BZ 1@broad -2.0% | MEDIUM
+[40/98] #39 Skoda Octavia Diesel 2020 EUR 8800
+    retrieved skoda/octavia: AB=60 BZ=60
+    -> AB 4@moderate 46.3% | BZ 7@moderate 41.1% | HIGH
+[41/98] #40 Mazda Cx-3 Petrol 2017 EUR 10000
+    -> AB 4@strict 7.4% | BZ 2@broad 33.3% | MEDIUM
+[42/98] #41 Dacia Duster Petrol 2024 EUR 17600
+    -> AB 2@broad -16.6% | BZ 1@broad -0.6% | INSUFFICIENT
+[43/98] #42 Peugeot 3008 Hybrid 2020 EUR 15000
+    retrieved peugeot/3008: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 1@broad -7.1% | INSUFFICIENT
+[44/98] #43 Mercedes Gla-Class Petrol 2017 EUR 9800
+    retrieved mercedes/gla-class: AB=8 BZ=5 [AB:category slug mercedes-benz/gla-class 404 -> keyword fallback] [BZ:BLOCKED: Unexpected HTTP 404 for 'https://auto.bazos.sk/?hledat=Mercedes+Gla-Class&hlokalita=&humkreis=25&cenaod=&cenado=&crp=20'.]
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[45/98] #44 Nissan Qashqai Petrol 2016 EUR 6400
+    -> AB 4@moderate 36.6% | BZ 2@broad 27.3% | MEDIUM
+[46/98] #45 Opel Corsa Petrol 2016 EUR 5600
+    retrieved opel/corsa: AB=60 BZ=60
+    -> AB 6@broad -51.6% | BZ 1@broad 25.2% | MEDIUM
+[47/98] #46 Mazda Cx-5 Petrol 2018 EUR 16000
+    -> AB 4@strict 20.9% | BZ 3@broad 25.6% | MEDIUM
+[48/98] #47 Fiat 500X Petrol 2018 EUR 6500
+    retrieved fiat/500x: AB=19 BZ=60
+    -> AB 10@broad 34.3% | BZ 3@moderate 32.3% | MEDIUM
+[49/98] #48 Skoda Kamiq Petrol 2022 EUR 12500
+    -> AB 15@moderate 14.4% | BZ 4@broad 31.5% | MEDIUM
+[50/98] #49 Audi A5 Petrol 2016 EUR 7500
+    retrieved audi/a5: AB=51 BZ=60
+    -> AB 0@broad None% | BZ 1@broad 20.2% | INSUFFICIENT
+[51/98] #50 Ford S-Max Petrol 2017 EUR 3800
+    retrieved ford/s-max: AB=60 BZ=60
+    -> AB 0@broad None% | BZ 4@broad 56.0% | LOW
+[52/98] #51 Mercedes B-Class Petrol 2015 EUR 6800
+    retrieved mercedes/b-class: AB=60 BZ=43 [AB:category slug mercedes-benz/b-class 404 -> keyword fallback]
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[53/98] #52 Mazda Cx-5 Petrol 2021 EUR 20500
+    -> AB 4@broad 28.1% | BZ 5@broad 4.6% | MEDIUM
+[54/98] #53 Audi Q2 Petrol 2020 EUR 12000
+    retrieved audi/q2: AB=19 BZ=60
+    -> AB 9@broad 29.4% | BZ 2@broad 19.9% | MEDIUM
+[55/98] #54 Citroen C3 Petrol 2021 EUR 7000
+    retrieved citroen/c3: AB=60 BZ=60
+    -> AB 2@broad 18.6% | BZ 7@broad 12.4% | LOW
+[56/98] #55 VW Polo Diesel 2014 EUR 2300
+    retrieved vw/polo: AB=60 BZ=60
+    -> AB 5@broad 42.5% | BZ 2@broad 67.1% | MEDIUM
+[57/98] #56 Skoda Fabia Petrol 2018 EUR 6300
+    retrieved skoda/fabia: AB=60 BZ=60
+    -> AB 5@moderate 32.9% | BZ 6@broad 14.8% | MEDIUM
+[58/98] #57 VW Passat Diesel 2006 EUR 900
+    retrieved vw/passat: AB=60 BZ=60
+    -> AB 7@moderate 63.9% | BZ 3@broad 93.8% | MEDIUM
+[59/98] #58 Peugeot 2008 Petrol 2014 EUR 2500
+    -> AB 2@broad 62.7% | BZ 3@broad 59.7% | INSUFFICIENT
+[60/98] #59 Opel Astra Petrol 2017 EUR 3200
+    retrieved opel/astra: AB=60 BZ=60
+    -> AB 6@moderate 50.0% | BZ 6@broad 58.4% | MEDIUM
+[61/98] #60 Suzuki Vitara Petrol 2019 EUR 11700
+    -> AB 5@strict 20.4% | BZ 3@broad 17.9% | MEDIUM
+[62/98] #61 Kia Sportage Diesel 2019 EUR 11800
+    retrieved kia/sportage: AB=60 BZ=60
+    -> AB 9@broad 23.8% | BZ 4@broad 1.7% | MEDIUM
+[63/98] #62 Nissan Qashqai Diesel 2015 EUR 7000
+    -> AB 4@moderate 6.0% | BZ 5@moderate 11.4% | HIGH
+[64/98] #63 Opel Zafira Petrol 2016 EUR 7200
+    retrieved opel/zafira: AB=60 BZ=60
+    -> AB 1@broad -24.1% | BZ 1@broad 39.9% | INSUFFICIENT
+[65/98] #64 Suzuki Vitara Petrol 2023 EUR 15500
+    -> AB 3@broad -6.2% | BZ 2@broad 8.7% | INSUFFICIENT
+[66/98] #65 Renault Captur Petrol 2017 EUR 5500
+    -> AB 4@strict 6.8% | BZ 3@strict 18.5% | MEDIUM
+[67/98] #66 Volkswagen T-Cross Petrol 2019 EUR 11300
+    retrieved volkswagen/t-cross: AB=60 BZ=60
+    -> AB 10@moderate 24.1% | BZ 3@broad 13.1% | MEDIUM
+[68/98] #67 Opel Astra Petrol 2016 EUR 6500
+    -> AB 4@moderate 26.1% | BZ 5@broad 17.7% | HIGH
+[69/98] #68 Volkswagen Tiguan Petrol 2020 EUR 17000
+    retrieved volkswagen/tiguan: AB=60 BZ=60
+    -> AB 5@moderate 5.6% | BZ 4@moderate 12.6% | HIGH
+[70/98] #69 Skoda Karoq Petrol 2020 EUR 16000
+    -> AB 6@moderate 22.9% | BZ 6@broad 23.8% | HIGH
+[71/98] #70 Suzuki Vitara Petrol 2021 EUR 13000
+    -> AB 7@moderate 10.3% | BZ 2@broad 23.4% | MEDIUM
+[72/98] #71 Toyota Corolla Hybrid 2019 EUR 16300
+    retrieved toyota/corolla: AB=60 BZ=60
+    -> AB 2@broad 8.9% | BZ 3@broad 22.3% | INSUFFICIENT
+[73/98] #72 Mazda Cx-5 Petrol 2018 EUR 14200
+    -> AB 6@broad 29.8% | BZ 4@moderate 19.5% | HIGH
+[74/98] #73 BMW 3 Series Petrol 2019 EUR 14000
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[75/98] #74 BMW 318d Diesel 2009 EUR 1600
+    retrieved bmw/318d: AB=60 BZ=60 [AB:category slug bmw/318d 404 -> keyword fallback]
+    -> AB 5@moderate 68.0% | BZ 6@broad 74.2% | MEDIUM
+[76/98] #75 Renault Austral Petrol 2024 EUR 21500
+    retrieved renault/austral: AB=39 BZ=27 [BZ:BLOCKED: Unexpected HTTP 404 for 'https://auto.bazos.sk/?hledat=Renault+Austral&hlokalita=&humkreis=25&cenaod=&cenado=&crp=40'.]
+    -> AB 5@broad 8.5% | BZ 1@broad 12.2% | MEDIUM
+[77/98] #76 Suzuki Vitara Petrol 2019 EUR 11900
+    -> AB 8@broad 17.4% | BZ 3@broad 16.5% | MEDIUM
+[78/98] #77 VW ID.3 Electric 2021 EUR 9000
+    retrieved vw/id.3: AB=60 BZ=58
+    -> AB 9@moderate 48.6% | BZ 4@moderate 44.4% | HIGH
+[79/98] #78 BMW 2 Series Petrol 2020 EUR 9000
+    retrieved bmw/2 series: AB=31 BZ=36 [AB:category slug bmw/2-series 404 -> keyword fallback] [BZ:BLOCKED: Unexpected HTTP 404 for 'https://auto.bazos.sk/?hledat=BMW+2+Series&hlokalita=&humkreis=25&cenaod=&cenado=&crp=40'.]
+    -> AB 0@broad None% | BZ 0@broad None% | INSUFFICIENT
+[80/98] #79 Mazda Cx-5 Petrol 2019 EUR 14800
+    -> AB 7@broad 28.8% | BZ 4@moderate 16.1% | MEDIUM
+[81/98] #80 Volkswagen Touran Petrol 2018 EUR 12200
+    retrieved volkswagen/touran: AB=60 BZ=60
+    -> AB 4@broad 20.7% | BZ 1@broad -229.7% | MEDIUM
+[82/98] #81 Volkswagen Tiguan Petrol 2022 EUR 22700
+    -> AB 4@broad 3.4% | BZ 5@broad -10.7% | HIGH
+[83/98] #82 Volkswagen Passat Petrol 2018 EUR 8500
+    -> AB 1@broad 43.3% | BZ 0@broad None% | INSUFFICIENT
+[84/98] #83 Toyota Corolla Hybrid 2021 EUR 15500
+    -> AB 5@broad 11.4% | BZ 6@broad 24.2% | HIGH
+[85/98] #84 Suzuki S-Cross Hybrid 2024 EUR 22000
+    retrieved suzuki/s-cross: AB=24 BZ=60
+    -> AB 3@broad 16.9% | BZ 4@broad -27.9% | LOW
+[86/98] #85 Volkswagen Golf Petrol 2019 EUR 12500
+    -> AB 3@broad 13.8% | BZ 5@broad 13.8% | MEDIUM
+[87/98] #86 Mazda Cx-3 Petrol 2018 EUR 11000
+    -> AB 5@moderate 1.8% | BZ 2@broad 26.6% | MEDIUM
+[88/98] #87 Mercedes A-Class Petrol 2017 EUR 9500
+    retrieved mercedes/a-class: AB=60 BZ=60 [AB:category slug mercedes-benz/a-class 404 -> keyword fallback]
+    -> AB 0@broad None% | BZ 1@broad 58.5% | INSUFFICIENT
+[89/98] #88 Mazda Cx-5 Petrol 2014 EUR 9500
+    -> AB 4@strict 10.0% | BZ 4@moderate -1.7% | HIGH
+[90/98] #89 Nissan Qashqai Petrol 2021 EUR 13500
+    -> AB 2@broad 43.1% | BZ 1@broad 38.6% | INSUFFICIENT
+[91/98] #90 Volkswagen Tiguan Petrol 2020 EUR 19000
+    -> AB 5@moderate -0.5% | BZ 7@broad -0.5% | HIGH
+[92/98] #91 Skoda Karoq Petrol 2019 EUR 19500
+    -> AB 4@broad 10.9% | BZ 2@broad 25.7% | MEDIUM
+[93/98] #92 Audi Q3 Diesel 2018 EUR 13000
+    -> AB 10@broad 14.7% | BZ 0@broad None% | MEDIUM
+[94/98] #93 Kia Xceed Hybrid 2021 EUR 15000
+    retrieved kia/xceed: AB=60 BZ=60
+    -> AB 3@broad 19.4% | BZ 2@broad 16.6% | INSUFFICIENT
+[95/98] #94 Toyota C-Hr Hybrid 2019 EUR 18200
+    retrieved toyota/c-hr: AB=60 BZ=60
+    -> AB 7@broad -4.6% | BZ 5@broad 15.3% | MEDIUM
+[96/98] #95 Toyota C-Hr Hybrid 2019 EUR 16200
+    -> AB 11@strict 8.0% | BZ 4@moderate 7.2% | HIGH
+[97/98] #96 Skoda Octavia Petrol 2019 EUR 12500
+    -> AB 7@broad 17.8% | BZ 2@broad 12.9% | MEDIUM
+[98/98] #97 Seat Ateca Petrol 2020 EUR 16750
+    retrieved seat/ateca: AB=60 BZ=60
+    -> AB 8@moderate -1.8% | BZ 7@broad 0.8% | HIGH
+
+======================================================================
+DIAGNOSTIC SUMMARY
+======================================================================
+Total inventory cars processed : 98
+
+Confidence flags:
+  HIGH        : 18
+  MEDIUM      : 42
+  LOW         : 8
+  INSUFFICIENT: 30
+
+Source coverage (>=1 comparable):
+  Autobazar data : 84/98
+  Bazos data     : 85/98
+  BOTH sources   : 79/98
+Source coverage (>=4 usable comparables):
+  Autobazar usable: 60/98
+  Bazos usable    : 37/98
+
+Significant cross-source disagreement (>30% median spread): 15
+
+Models most frequently producing INSUFFICIENT samples:
+   4x  Nissan Qashqai
+   2x  Volkswagen Passat
+   2x  BMW 3 Series
+   1x  Nissan X-Trail
+   1x  Subaru Impreza
+   1x  Volkswagen Golf Sportsvan
+   1x  Skoda Superb
+   1x  BMW X1
+   1x  Renault Mégane
+   1x  Toyota Verso
+   1x  VW Golf
+   1x  Mazda Cx-5
+
+Models with retrieval failure (no listings from either source):
+   2x  BMW 3 Series
+   1x  Skoda Superb
+   1x  Volkswagen Passat
+   1x  VW Golf
+   1x  Mercedes Gla-Class
+   1x  Mercedes B-Class
+   1x  Renault Austral
+   1x  BMW 2 Series
+
+======================================================================
+RANKED - most below market (top 15)
+======================================================================
+ row_index      brand    model  year  inventory_price_eur  ab_price_diff_pct  bz_price_diff_pct rank_source  rank_price_diff_pct confidence_flag
+        74        BMW     318d  2009                 1600               68.0               74.2       bazos                 74.2          MEDIUM
+        57         VW   Passat  2006                  900               63.9               93.8   autobazar                 63.9          MEDIUM
+         5     Subaru  Impreza  2019                11000                NaN               61.8       bazos                 61.8    INSUFFICIENT
+        58    Peugeot     2008  2014                 2500               62.7               59.7       bazos                 59.7    INSUFFICIENT
+        87   Mercedes  A-Class  2017                 9500                NaN               58.5       bazos                 58.5    INSUFFICIENT
+        28      Dacia   Duster  2014                 2300               57.8               71.2   autobazar                 57.8          MEDIUM
+        50       Ford    S-Max  2017                 3800                NaN               56.0       bazos                 56.0             LOW
+        22       Opel Insignia  2014                 2400               53.8               61.6   autobazar                 53.8          MEDIUM
+        19       Audi       Q3  2018                10800               51.7               66.8   autobazar                 51.7          MEDIUM
+        59       Opel    Astra  2017                 3200               50.0               58.4   autobazar                 50.0          MEDIUM
+        77         VW     ID.3  2021                 9000               48.6               44.4   autobazar                 48.6            HIGH
+        35 Volkswagen     Golf  2019                 7500               27.2               46.0       bazos                 46.0          MEDIUM
+        29     Nissan  Qashqai  2021                13000               44.7               18.7   autobazar                 44.7    INSUFFICIENT
+         6     Toyota    Auris  2015                 7200               43.8                1.4   autobazar                 43.8          MEDIUM
+        82 Volkswagen   Passat  2018                 8500               43.3                NaN   autobazar                 43.3    INSUFFICIENT
+
+Saved:
+  phase7_out/master_summary.csv
+  phase7_out/ranked_report.csv
+  phase7_out/insufficient_report.csv
+  phase7_out/diagnostics.txt
+  phase7_out/comparables_car*_*.csv  (per-car per-source comparables)

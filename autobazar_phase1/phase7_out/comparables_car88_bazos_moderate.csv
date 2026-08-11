@@ -1,0 +1,5 @@
+source,listing_id,title,variant_engine,fuel,year,km,power_kw,transmission,body_type,price,url,rule_brand,rule_model,rule_fuel,rule_variant,rule_year,rule_km,rule_power,rule_transmission
+bazos,194073008,Mazda CX-5 2.0 Skyactive-G 4x4,,Petrol,2014.0,178900.0,118.0,Manual,SUV,11490.0,https://auto.bazos.sk/inzerat/194073008/mazda-cx-5-20-skyactive-g-4x4.php,match,match,match,n/a,match,match,match,n/a
+bazos,194463260,Mazda CX5,,,2014.0,195300.0,129.0,,,7200.0,https://auto.bazos.sk/inzerat/194463260/mazda-cx5.php,match,unknown,unknown,n/a,match,match,match,n/a
+bazos,194443845,Mazda cx-5,,,2012.0,164500.0,129.0,,,5900.0,https://auto.bazos.sk/inzerat/194443845/mazda-cx-5.php,match,match,unknown,n/a,match,match,match,n/a
+bazos,194364924,Prodám Mazda CX-5 2.0 118kW 2012 125435km Sports-Line 4x4,,Petrol,2012.0,125435.0,118.0,,,12398.0,https://auto.bazos.sk/inzerat/194364924/prodam-mazda-cx-5-20-118kw-2012-125435km-sports-line-4x4.php,match,match,match,n/a,match,match,match,n/a
