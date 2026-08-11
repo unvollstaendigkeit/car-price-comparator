@@ -12,19 +12,7 @@
         "main.py": {
           "maxDuration": 60
         }
-      },
-      "routes": [
-        {
-          "src": "/api/(.*)",
-          "transforms": [
-            {
-              "type": "request.path",
-              "op": "set",
-              "args": "/$1"
-            }
-          ]
-        }
-      ]
+      }
     }
   },
   "rewrites": [

@@ -6,10 +6,12 @@ package (copied verbatim from the tested `autobazar_phase1` sources) and is
 never reimplemented here. Autobazar and Bazos results are kept separate by the
 engine and passed through untouched.
 
-Endpoints (Vercel strips the `/api` routePrefix before forwarding):
-  GET  /health                 - liveness probe
-  POST /compare                - single-car comparison (synchronous JSON)
-  POST /compare/stream         - single-car comparison as an SSE progress stream
+Routes are served under `/api` directly so they match the path Vercel
+forwards to this service (the `/api/*` rewrite passes the original path
+through unchanged):
+  GET  /api/health             - liveness probe
+  POST /api/compare            - single-car comparison (synchronous JSON)
+  POST /api/compare/stream     - single-car comparison as an SSE progress stream
 """
 from __future__ import annotations
 
@@ -108,7 +110,7 @@ def _to_input(p: CarPayload) -> SingleCarInput:
 # --------------------------------------------------------------------------- #
 # Health
 # --------------------------------------------------------------------------- #
-@app.get("/health")
+@app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -116,7 +118,7 @@ async def health() -> dict[str, str]:
 # --------------------------------------------------------------------------- #
 # Single-car: synchronous
 # --------------------------------------------------------------------------- #
-@app.post("/compare")
+@app.post("/api/compare")
 def compare(payload: CarPayload) -> dict:
     result = compare_single_car(
         _to_input(payload), max_pages=payload.max_pages, delay=payload.delay
@@ -135,7 +137,7 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(_json_safe(payload), ensure_ascii=False)}\n\n"
 
 
-@app.post("/compare/stream")
+@app.post("/api/compare/stream")
 def compare_stream(payload: CarPayload) -> StreamingResponse:
     inp = _to_input(payload)
 
