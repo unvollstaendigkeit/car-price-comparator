@@ -297,7 +297,12 @@ def map_columns(
 
     Returns (mapping canonical->header, unmapped_headers, ambiguity_messages).
     """
-    manual_mapping = {(_norm_header(k)): v for k, v in (manual_mapping or {}).items()}
+    # Two-tier manual override: an EXACT (case-sensitive) header map takes
+    # precedence, so columns that differ only by case (e.g. 'Type' -> fuel vs
+    # 'type' -> body_type) can each be pinned individually. A normalized map is
+    # kept as a convenience fallback for the common single-column case.
+    manual_exact = dict(manual_mapping or {})
+    manual_norm = {_norm_header(k): v for k, v in (manual_mapping or {}).items()}
     headers = list(df.columns)
 
     assigned: dict[str, str] = {}          # canonical -> header
@@ -314,9 +319,16 @@ def map_columns(
     for header in headers:
         norm = _norm_header(header)
 
-        # 1) manual override wins outright
-        if norm in manual_mapping:
-            assign(manual_mapping[norm], header)
+        # 1) manual override wins outright (exact header first, then normalized).
+        #    The normalized fallback is skipped when any exact key targets a
+        #    header sharing this normalized form, so case-only-different columns
+        #    are never cross-assigned.
+        if header in manual_exact:
+            assign(manual_exact[header], header)
+            continue
+        exact_claims_this_norm = any(_norm_header(k) == norm for k in manual_exact)
+        if norm in manual_norm and not exact_claims_this_norm:
+            assign(manual_norm[norm], header)
             continue
 
         canon_set = _TOKEN_TO_CANON.get(norm)
