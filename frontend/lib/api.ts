@@ -1,4 +1,22 @@
-import type { CarInput, ProgressEvent } from './types'
+import type { CarInput, ParsedRow, ProgressEvent } from './types'
+
+/**
+ * Parse a single pasted spreadsheet / Markdown / delimited row into the
+ * canonical single-car fields. Pure parsing (no scraping) — the backend
+ * reuses the shared inventory normalizer so it never diverges from the
+ * manual entry path.
+ */
+export async function parseRow(text: string): Promise<ParsedRow> {
+  const res = await fetch('/api/parse-row', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) {
+    throw new Error(`Backend returned ${res.status}`)
+  }
+  return (await res.json()) as ParsedRow
+}
 
 /**
  * Stream a single-car comparison. Vercel routes /api/* to the FastAPI backend,

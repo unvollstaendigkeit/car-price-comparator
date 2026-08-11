@@ -114,3 +114,27 @@ export interface CarInput {
   transmission?: string
   body_type?: string
 }
+
+/* ---- paste-a-row parsing (backend row_parser.parse_pasted_row) ---- */
+export type FieldConfidence = 'high' | 'medium' | 'low'
+
+export interface ParsedField {
+  value: string | number | null
+  detected: boolean
+  confidence: FieldConfidence
+  source: string
+}
+
+export interface ParsedRow {
+  ok: boolean
+  mode: 'header' | 'headerless' | 'empty'
+  car: CarInput
+  fields: Record<keyof CarInput, ParsedField>
+  extras: {
+    vin?: string | null
+    colour?: string | null
+    notes?: string[]
+  }
+  cells: string[]
+  issues: string[]
+}
