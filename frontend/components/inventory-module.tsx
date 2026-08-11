@@ -26,6 +26,10 @@ export function InventoryModule() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  // Persistent market cache controls: `refresh` forces a live re-fetch of every
+  // model; `runId` remounts AnalysisPanel to start a fresh run (e.g. on refresh).
+  const [refresh, setRefresh] = useState(false)
+  const [runId, setRunId] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   async function ingest(run: () => Promise<InventoryReport>) {
@@ -51,15 +55,25 @@ export function InventoryModule() {
     setReport(null)
     setError(null)
     setPhase("upload")
+    setRefresh(false)
     if (inputRef.current) inputRef.current.value = ""
+  }
+
+  const startRun = (forceRefresh: boolean) => {
+    setRefresh(forceRefresh)
+    setRunId((n) => n + 1)
+    setPhase("analyzing")
   }
 
   if (phase === "analyzing" && report) {
     return (
       <AnalysisPanel
+        key={runId}
         rows={report.rows.filter((r) => r.valid_for_comparison)}
+        refresh={refresh}
         onBack={() => setPhase("ready")}
         onReset={reset}
+        onRefreshRun={() => startRun(true)}
       />
     )
   }
@@ -68,9 +82,11 @@ export function InventoryModule() {
     return (
       <ReadyPanel
         report={report}
+        refresh={refresh}
+        onRefreshChange={setRefresh}
         onBack={() => setPhase("review")}
         onReset={reset}
-        onRun={() => setPhase("analyzing")}
+        onRun={() => startRun(refresh)}
       />
     )
   }
@@ -312,11 +328,15 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "pos
 /* --------------------------------------------------------------------------- */
 function ReadyPanel({
   report,
+  refresh,
+  onRefreshChange,
   onBack,
   onReset,
   onRun,
 }: {
   report: InventoryReport
+  refresh: boolean
+  onRefreshChange: (v: boolean) => void
   onBack: () => void
   onReset: () => void
   onRun: () => void
@@ -334,9 +354,21 @@ function ReadyPanel({
         <p className="mx-auto max-w-md text-[15px] leading-relaxed text-muted">
           Each car is valued against Autobazar.eu and Bazoš.sk — the same two-source comparison used in Single car
           mode. Cars are grouped by make &amp; model, so shared searches keep requests low and the two sources stay
-          separate (never blended).
+          separate (never blended). Market data for each model is cached for 24h, so repeat runs reuse it with no new
+          requests.
         </p>
       </div>
+      <label className="flex cursor-pointer items-center gap-2.5 rounded-md border border-border bg-surface-2/50 px-3.5 py-2 text-[13px] text-muted">
+        <input
+          type="checkbox"
+          checked={refresh}
+          onChange={(e) => onRefreshChange(e.target.checked)}
+          className="h-4 w-4 accent-accent"
+        />
+        <span>
+          Refresh market data <span className="text-faint">— ignore the cache and fetch every model live</span>
+        </span>
+      </label>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <button
           type="button"

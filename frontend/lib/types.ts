@@ -234,6 +234,24 @@ export interface AnalysisSummary {
   market_lookups: number
   disabled_sources: string[]
   ranked: AnalysisCarResult[]
+  benchmark?: {
+    total_cars: number
+    unique_groups: number
+    cached_groups: number
+    cache_hits: number
+    http_requests: number
+    market_lookups: number
+    retrieval_time_s: number
+    eval_time_s: number
+    total_time_s: number
+    mode: string
+  }
+}
+
+/** Per-source cache status the backend reports for a model before retrieval. */
+export interface CacheSourceStatus {
+  from_cache: boolean
+  age_s: number | null
 }
 
 /** Union of every event the /api/inventory/analyze/stream SSE emits. */
@@ -247,6 +265,7 @@ export type AnalysisEvent =
       model: string
       cars_in_group: number
       cached: boolean
+      cache_status: { autobazar: CacheSourceStatus; bazos: CacheSourceStatus }
     }
   | {
       stage: 'retrieved'
@@ -256,6 +275,10 @@ export type AnalysisEvent =
       bz_count: number
       ab_error: string | null
       bz_error: string | null
+      ab_from_cache: boolean
+      bz_from_cache: boolean
+      ab_age_s: number | null
+      bz_age_s: number | null
     }
   | { stage: 'source_disabled'; source: string; reason: string }
   | { stage: 'car_done'; analyzed: number; total: number; car: AnalysisCarResult }

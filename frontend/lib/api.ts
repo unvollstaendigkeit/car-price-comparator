@@ -126,11 +126,12 @@ export async function streamInventoryAnalysis(
   rows: InventoryRow[],
   onEvent: (e: AnalysisEvent) => void,
   signal?: AbortSignal,
+  options?: { refresh?: boolean },
 ): Promise<void> {
   const res = await fetch('/api/inventory/analyze/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rows }),
+    body: JSON.stringify({ rows, refresh: options?.refresh ?? false }),
     signal,
   })
   await readSSE<AnalysisEvent>(res, onEvent)

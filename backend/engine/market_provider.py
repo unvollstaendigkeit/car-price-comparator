@@ -39,10 +39,15 @@ from phase6_validate import retrieve_autobazar, retrieve_bazos
 
 CACHE_MISS_ERR = "CACHE_MISS: no saved market pool for this (source, brand, model)"
 
-# Default on-disk location for a saved store (used by the benchmark harness).
+# Default on-disk location for a saved store (used by the benchmark harness and
+# the live persistent cache backing Inventory mode).
 DEFAULT_STORE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "fixtures", "market_cache.pkl"
 )
+
+# How long a cached (source, brand, model) pool stays usable before it is
+# considered expired and re-fetched live. 24h by default; configurable per run.
+DEFAULT_TTL_S = 24 * 60 * 60
 
 
 def _norm(brand: str, model: str) -> tuple[str, str]:
@@ -55,6 +60,8 @@ class RetrieveResult:
     err: str
     elapsed_s: float
     http_requests: int  # real network requests issued (0 for cached)
+    from_cache: bool = False        # served from a persisted/in-memory pool
+    age_s: Optional[float] = None   # age of the cached pool in seconds (None if live/unknown)
 
 
 # --------------------------------------------------------------------------- #
@@ -78,11 +85,14 @@ class MarketStore:
 
     # -- write ------------------------------------------------------------- #
     def record(self, source: str, brand: str, model: str, pages: int,
-               df: pd.DataFrame, err: str, elapsed_s: float) -> None:
+               df: pd.DataFrame, err: str, elapsed_s: float,
+               fetched_at: Optional[float] = None) -> None:
         self.entries[self.key(source, brand, model, pages)] = {
             "df": df.copy(deep=True),
             "err": err or "",
             "elapsed_s": float(elapsed_s),
+            "pages": int(pages),
+            "fetched_at": float(fetched_at if fetched_at is not None else time.time()),
         }
 
     # -- read -------------------------------------------------------------- #
@@ -108,6 +118,41 @@ class MarketStore:
         pool = at_or_below or candidates
         pool.sort(key=lambda c: c[0])
         return pool[-1][1]
+
+    def get_fresh(self, source: str, brand: str, model: str, pages: int,
+                  ttl_s: Optional[float]) -> Optional[dict]:
+        """
+        Return a NON-EXPIRED pool for (source, brand, model) whose depth is >=
+        `pages`, or None. Depth matters because a shallow (1-page) snapshot must
+        NOT satisfy a request that wants more pages — that would silently starve
+        deepening. Among sufficiently-deep fresh entries, the shallowest is
+        returned (closest match to what was asked for). ttl_s=None disables
+        expiry. Entries without a fetched_at are treated as expired (safe: they
+        get refreshed live).
+        """
+        b, m = _norm(brand, model)
+        now = time.time()
+        candidates: list[tuple[int, dict]] = []
+        for k, v in self.entries.items():
+            if k[0] != source or k[1] != b or k[2] != m:
+                continue
+            if k[3] < int(pages):
+                continue
+            fa = v.get("fetched_at")
+            if fa is None:
+                continue
+            if ttl_s is not None and (now - fa) > ttl_s:
+                continue
+            candidates.append((k[3], v))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda c: c[0])
+        return candidates[0][1]
+
+    @staticmethod
+    def age_of(entry: dict) -> Optional[float]:
+        fa = entry.get("fetched_at")
+        return (time.time() - fa) if fa is not None else None
 
     def has_model(self, brand: str, model: str) -> bool:
         b, m = _norm(brand, model)
@@ -157,6 +202,10 @@ class LiveMarketProvider:
         self.delay = delay
         self.store = store  # when set, live pools are saved for reuse
 
+    def peek(self, source: str, car, pages: int) -> Optional[dict]:
+        # Live always fetches; nothing is served from cache.
+        return None
+
     def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
         fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
         t0 = time.perf_counter()
@@ -180,9 +229,86 @@ class CachedMarketProvider:
     def __init__(self, store: MarketStore):
         self.store = store
 
+    def peek(self, source: str, car, pages: int) -> Optional[dict]:
+        hit = self.store.get(source, car.brand, car.model, pages)
+        if hit is None:
+            return None
+        return {"from_cache": True, "age_s": MarketStore.age_of(hit)}
+
     def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
         hit = self.store.get(source, car.brand, car.model, pages)
         if hit is None:
             return RetrieveResult(pd.DataFrame(), CACHE_MISS_ERR, 0.0, 0)
         # Copy so downstream mutations never poison the shared snapshot.
-        return RetrieveResult(hit["df"].copy(deep=True), hit["err"], 0.0, 0)
+        return RetrieveResult(
+            hit["df"].copy(deep=True), hit["err"], 0.0, 0,
+            from_cache=True, age_s=MarketStore.age_of(hit),
+        )
+
+
+class PersistentCacheProvider:
+    """
+    The transport that backs Inventory mode in production: a persistent,
+    cache-first market-data layer with a live fallback.
+
+    On each retrieve:
+      * If a NON-EXPIRED cached pool exists for (source, brand, model) at the
+        requested depth (and we are not force-refreshing), serve it with ZERO
+        HTTP requests.
+      * Otherwise fetch it live (single-threaded, polite delay — the same
+        Phase-6 retrieval), record it with a fresh `fetched_at`, persist the
+        store to disk, and return it.
+
+    Autobazar and Bazoš pools are stored under separate keys and never merged.
+    Only normalized candidate pools are cached — never car valuations. There is
+    no concurrency, proxy, or rate-limit circumvention: a miss is just one more
+    ordinary polite request.
+    """
+
+    is_live = True  # may hit the network on a miss/expiry/force-refresh
+
+    def __init__(self, store: Optional[MarketStore] = None,
+                 path: str = DEFAULT_STORE_PATH,
+                 ttl_s: Optional[float] = DEFAULT_TTL_S,
+                 delay: float = 1.0,
+                 force_refresh: bool = False):
+        self.path = path
+        self.store = store if store is not None else MarketStore.load_or_empty(path)
+        self.ttl_s = ttl_s
+        self.delay = delay
+        self.force_refresh = force_refresh
+
+    def peek(self, source: str, car, pages: int) -> Optional[dict]:
+        """Report expected cache status for this source WITHOUT fetching."""
+        if self.force_refresh:
+            return None
+        hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
+        if hit is None:
+            return None
+        return {"from_cache": True, "age_s": MarketStore.age_of(hit)}
+
+    def retrieve(self, source: str, car, pages: int) -> RetrieveResult:
+        if not self.force_refresh:
+            hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
+            if hit is not None:
+                return RetrieveResult(
+                    hit["df"].copy(deep=True), hit["err"], 0.0, 0,
+                    from_cache=True, age_s=MarketStore.age_of(hit),
+                )
+        # Miss, expiry, or forced refresh -> one polite live request.
+        fn = retrieve_autobazar if source == "autobazar" else retrieve_bazos
+        t0 = time.perf_counter()
+        df, err = fn(car, pages, self.delay)
+        elapsed = time.perf_counter() - t0
+        err = err or ""
+        self.store.record(source, car.brand, car.model, pages, df, err, elapsed)
+        self._save()
+        return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=1,
+                              from_cache=False, age_s=0.0)
+
+    def _save(self) -> None:
+        try:
+            self.store.save(self.path)
+        except Exception:
+            # Persistence is best-effort; a failed save must never break analysis.
+            pass

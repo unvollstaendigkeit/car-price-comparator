@@ -55,6 +55,7 @@ from inventory_api import (  # noqa: E402
     parse_upload,
 )
 from inventory_run import analyze_inventory  # noqa: E402
+from market_provider import PersistentCacheProvider  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -181,14 +182,23 @@ class InventoryAnalyzePayload(BaseModel):
     rows: list[dict]
     delay: float = 1.0
     max_pages: int = 3
+    refresh: bool = False  # force a live refresh, ignoring cached pools
 
 
 @app.post("/api/inventory/analyze/stream")
 def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
+    # A persistent, cache-first market layer: fresh (source, brand, model) pools
+    # are reused across runs with ZERO HTTP; misses/expiries fetch live and
+    # update the cache. `refresh=true` forces a live refresh of every model.
+    provider = PersistentCacheProvider(delay=payload.delay, force_refresh=payload.refresh)
+
     def gen():
         try:
             for event in analyze_inventory(
-                payload.rows, delay=payload.delay, max_pages=payload.max_pages
+                payload.rows,
+                delay=payload.delay,
+                max_pages=payload.max_pages,
+                provider=provider,
             ):
                 yield _sse(event)
         except Exception as e:  # noqa: BLE001 - surface any engine error to the client
