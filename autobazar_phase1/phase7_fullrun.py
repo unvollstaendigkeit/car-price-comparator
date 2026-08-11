@@ -142,19 +142,19 @@ def confidence_flag(car: InvCar, ab: dict, bz: dict) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Per-car processing
 # --------------------------------------------------------------------------- #
-def process_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
-                ab_err: str, bz_err: str, out_dir: str) -> dict:
+def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
+                 ab_err: str, bz_err: str) -> tuple[dict, dict, dict, pd.DataFrame, pd.DataFrame]:
+    """
+    Pure comparison core (no disk I/O): run both sources through the adaptive
+    estimator, build the transparent flat summary row, and return it together
+    with the per-source estimates and the chosen-tier matched comparables.
+
+    This is the SINGLE source of comparison truth. Both the full-inventory path
+    (`process_car`) and the single-car path (`single_car.compare_single_car`)
+    call it, so they cannot diverge.
+    """
     ab_est, ab_matched = adaptive_estimate(car, ab_df)
     bz_est, bz_matched = adaptive_estimate(car, bz_df)
-
-    # Persist the chosen-tier comparables (with URLs) for later inspection.
-    for src, est, matched in (("autobazar", ab_est, ab_matched),
-                              ("bazos", bz_est, bz_matched)):
-        if not matched.empty:
-            matched.to_csv(
-                f"{out_dir}/comparables_car{car.row_index}_{src}_{est['tier_used']}.csv",
-                index=False,
-            )
 
     flag, reasons = confidence_flag(car, ab_est, bz_est)
     spread = median_spread_pct(ab_est["market_median"], bz_est["market_median"])
@@ -170,7 +170,7 @@ def process_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         rank_source, rank_est = "bazos", bz_est
     rank_pct = rank_est["undervaluation_pct"]
 
-    return {
+    row = {
         "row_index": car.row_index,
         "brand": car.brand,
         "model": car.model,
@@ -219,6 +219,27 @@ def process_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         "ab_retrieval_error": ab_err or "",
         "bz_retrieval_error": bz_err or "",
     }
+    return row, ab_est, bz_est, ab_matched, bz_matched
+
+
+def process_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
+                ab_err: str, bz_err: str, out_dir: str) -> dict:
+    """
+    Full-run wrapper around `evaluate_car`: runs the comparison and persists the
+    chosen-tier comparables (with URLs) to `out_dir` for later inspection.
+    Behaviour is identical to the original single-function implementation.
+    """
+    row, ab_est, bz_est, ab_matched, bz_matched = evaluate_car(
+        car, ab_df, bz_df, ab_err, bz_err
+    )
+    for src, est, matched in (("autobazar", ab_est, ab_matched),
+                              ("bazos", bz_est, bz_matched)):
+        if not matched.empty:
+            matched.to_csv(
+                f"{out_dir}/comparables_car{car.row_index}_{src}_{est['tier_used']}.csv",
+                index=False,
+            )
+    return row
 
 
 # --------------------------------------------------------------------------- #
