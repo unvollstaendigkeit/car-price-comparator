@@ -10,6 +10,7 @@ Routes are served under `/api` directly so they match the path Vercel
 forwards to this service (the `/api/*` rewrite passes the original path
 through unchanged):
   GET  /api/health             - liveness probe
+  POST /api/parse-row          - parse a pasted Excel/Sheets/Markdown row -> fields
   POST /api/compare            - single-car comparison (synchronous JSON)
   POST /api/compare/stream     - single-car comparison as an SSE progress stream
 """
@@ -39,6 +40,7 @@ from single_car import (  # noqa: E402  (import after sys.path setup)
     compare_single_car,
 )
 from phase6_validate import retrieve_autobazar, retrieve_bazos  # noqa: E402
+from row_parser import parse_pasted_row  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -113,6 +115,21 @@ def _to_input(p: CarPayload) -> SingleCarInput:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------- #
+# Paste-a-row: parse a single Excel / Google Sheets / Markdown row into the
+# canonical single-car fields. Pure parsing (no scraping) - reuses the shared
+# inventory normalization layer, so it never diverges from the manual path.
+# --------------------------------------------------------------------------- #
+class ParseRowPayload(BaseModel):
+    text: str
+
+
+@app.post("/api/parse-row")
+def parse_row(payload: ParseRowPayload) -> dict:
+    parsed = parse_pasted_row(payload.text or "")
+    return _json_safe(parsed.to_dict())
 
 
 # --------------------------------------------------------------------------- #

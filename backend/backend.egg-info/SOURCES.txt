@@ -13,4 +13,6 @@ engine/inventory_normalizer.py
 engine/phase5_compare.py
 engine/phase6_validate.py
 engine/phase7_fullrun.py
+engine/row_parser.py
 engine/single_car.py
+engine/test_row_parser.py
