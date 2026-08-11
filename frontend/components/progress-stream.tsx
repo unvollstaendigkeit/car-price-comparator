@@ -84,13 +84,13 @@ export function ProgressStream({
                 {s.label}
               </span>
               {raw !== undefined && (done || active) && (
-                <span className="ml-auto font-mono text-xs text-muted">{raw} listings</span>
+                <span className="ml-auto font-mono text-[13px] text-muted">{raw} listings</span>
               )}
             </li>
           )
         })}
       </ol>
-      <p className="mt-4 border-t border-border pt-3 text-xs text-faint">
+      <p className="mt-4 border-t border-border pt-3 text-[13px] text-faint">
         Live retrieval from two marketplaces — this typically takes 20–40 seconds. Results appear the moment
         the comparison finishes.
       </p>

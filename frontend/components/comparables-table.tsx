@@ -21,11 +21,11 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-faint">
-              <th className="px-3 py-2 font-medium">Price</th>
-              <th className="px-3 py-2 font-medium">Year</th>
-              <th className="px-3 py-2 font-medium">Mileage</th>
-              <th className="px-3 py-2 font-medium">Listing</th>
+            <tr className="border-b border-border text-left text-[13px] uppercase tracking-wide text-faint">
+              <th className="px-3 py-2.5 font-medium">Price</th>
+              <th className="px-3 py-2.5 font-medium">Year</th>
+              <th className="px-3 py-2.5 font-medium">Mileage</th>
+              <th className="px-3 py-2.5 font-medium">Listing</th>
             </tr>
           </thead>
           <tbody>
@@ -61,7 +61,7 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-accent hover:bg-surface-2/60"
+          className="w-full border-t border-border px-3 py-2.5 text-center text-[13px] font-medium text-accent hover:bg-surface-2/60"
         >
           {expanded ? "Show fewer" : `Show all ${rows.length} comparables`}
         </button>

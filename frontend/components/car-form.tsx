@@ -3,6 +3,8 @@
 import { useState } from "react"
 import type { CarInput, ParsedField, ParsedRow } from "@/lib/types"
 import { parseRow } from "@/lib/api"
+import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
+import { Disclosure } from "./disclosure"
 
 const FUELS = ["", "Petrol", "Diesel", "Hybrid", "PHEV", "Electric", "LPG", "CNG"]
 const TRANSMISSIONS = ["", "Manual", "Automatic"]
@@ -48,6 +50,7 @@ export function CarForm({
   const [detected, setDetected] = useState<DetectMap>({})
   const [extras, setExtras] = useState<ParsedRow["extras"]>({})
   const [issues, setIssues] = useState<string[]>([])
+  const [parseMode, setParseMode] = useState<ParsedRow["mode"] | null>(null)
 
   const set = <K extends keyof CarInput>(key: K, value: CarInput[K]) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -75,7 +78,7 @@ export function CarForm({
     try {
       const parsed = await parseRow(pasteText)
       if (!parsed.ok || parsed.mode === "empty") {
-        setParseError("Couldn't read any vehicle fields from that text. Check the row and try again.")
+        setParseError("Couldn't read a vehicle from that text. Check the row and try again.")
         setParsing(false)
         return
       }
@@ -83,6 +86,7 @@ export function CarForm({
       setDetected(parsed.fields as DetectMap)
       setExtras(parsed.extras ?? {})
       setIssues(parsed.issues ?? [])
+      setParseMode(parsed.mode)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Parsing failed")
     } finally {
@@ -105,16 +109,28 @@ export function CarForm({
   }
 
   const anyDetected = Object.keys(detected).length > 0
+
+  // Human-readable "Detected vehicle" summary line.
+  const detectedTitle = [form.brand, form.model].filter(Boolean).join(" ")
+  const detectedSpec = [fmtYear(form.year), form.fuel, form.km ? fmtKm(form.km) : null, form.price ? fmtEur(form.price) : null]
+    .filter((v) => v && v !== "—")
+    .join(" · ")
+
+  // Only warn when something genuinely important is missing or uncertain.
+  const missingImportant = anyDetected && (!form.brand || !form.model || !form.year || !form.price)
+
+  // Raw, low-level parser output — kept for transparency, hidden by default.
   const extraNotes = [
-    extras.vin ? `VIN ${extras.vin}` : null,
-    extras.colour ? `Colour ${extras.colour}` : null,
-    ...(extras.notes ?? []),
+    extras.vin ? `VIN: ${extras.vin}` : null,
+    extras.colour ? `Colour: ${extras.colour}` : null,
+    ...(extras.notes ?? []).map((n) => `Ignored: ${n}`),
   ].filter(Boolean) as string[]
+  const hasDetails = extraNotes.length > 0 || issues.length > 0
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">Vehicle details</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 className="text-lg font-semibold text-foreground">Vehicle details</h2>
         <div className="inline-flex rounded-md border border-border p-0.5">
           <ModeTab active={mode === "manual"} onClick={() => setMode("manual")}>
             Manual entry
@@ -126,8 +142,8 @@ export function CarForm({
       </div>
 
       {mode === "manual" ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2.5">
-          <span className="mr-1 text-[11px] text-faint">Quick fill:</span>
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+          <span className="mr-1 text-[13px] text-faint">Quick fill:</span>
           {EXAMPLES.map((ex) => (
             <button
               key={`${ex.brand}-${ex.model}`}
@@ -136,61 +152,92 @@ export function CarForm({
                 setForm({ ...empty, ...ex })
                 setDetected({})
               }}
-              className="rounded border border-border px-2 py-1 text-[11px] text-muted hover:border-border-strong hover:text-foreground"
+              className="rounded border border-border px-2.5 py-1 text-[13px] text-muted hover:border-border-strong hover:text-foreground"
             >
               {ex.brand} {ex.model}
             </button>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
-          <label className="text-xs font-medium text-muted" htmlFor="paste-row">
-            Paste one row from a spreadsheet, listing, or table
-          </label>
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[15px] font-medium text-foreground">Paste a row</h3>
+            <p className="text-[13px] text-muted">
+              Copy one complete row from Excel or Google Sheets and paste it here. You don&apos;t need to copy the
+              headers.
+            </p>
+          </div>
           <textarea
             id="paste-row"
-            className="ab-input min-h-[64px] resize-y font-mono text-xs leading-relaxed"
+            className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={"e.g.  " + PASTE_EXAMPLE.replace(/\t/g, "  |  ")}
+            placeholder={"Paste your row here…"}
           />
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={handleDetect}
               disabled={pasteText.trim() === "" || parsing}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {parsing ? "Detecting…" : "Detect fields"}
+              {parsing ? "Detecting…" : "Detect car"}
             </button>
             <button
               type="button"
               onClick={() => setPasteText(PASTE_EXAMPLE)}
-              className="rounded border border-border px-2 py-1 text-[11px] text-muted hover:border-border-strong hover:text-foreground"
+              className="text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
             >
               Try an example
             </button>
-            <span className="text-[11px] text-faint">
-              Tab, comma, semicolon, pipe, or Markdown-table rows all work. Header rows are auto-detected.
-            </span>
           </div>
-          {parseError && <p className="text-xs text-danger">{parseError}</p>}
+          {parseError && <p className="text-sm text-danger">{parseError}</p>}
+
           {anyDetected && (
-            <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-3 py-2">
-              <p className="text-[11px] text-muted">
-                Detected fields are filled below — review and edit anything before comparing.{" "}
-                <span className="text-faint">Amber marks a low-confidence guess.</span>
-              </p>
-              {extraNotes.length > 0 && (
-                <p className="text-[11px] text-faint">Also found (not used for matching): {extraNotes.join(" · ")}</p>
+            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 px-4 py-3.5">
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[13px] font-medium uppercase tracking-wide text-faint">Detected vehicle</p>
+                <p className="text-lg font-semibold text-foreground">{detectedTitle || "Vehicle"}</p>
+                {detectedSpec && <p className="text-sm text-muted">{detectedSpec}</p>}
+              </div>
+
+              {missingImportant && (
+                <p className="flex items-start gap-1.5 text-[13px] text-caution">
+                  <span aria-hidden>⚠</span>
+                  <span>Some details couldn&apos;t be detected. Please check the fields below.</span>
+                </p>
               )}
-              {issues.length > 0 && <p className="text-[11px] text-caution">{issues.join(" · ")}</p>}
+
+              <p className="text-[13px] text-muted">Review and edit the fields below before comparing.</p>
+
+              {hasDetails && (
+                <Disclosure summary="Show detection details">
+                  <div className="flex flex-col gap-1.5 text-[13px] text-faint">
+                    {parseMode && (
+                      <p>
+                        Parsed as:{" "}
+                        <span className="text-muted">
+                          {parseMode === "header" ? "labelled columns" : "unlabelled row (inferred by content)"}
+                        </span>
+                      </p>
+                    )}
+                    {extraNotes.map((n, i) => (
+                      <p key={i}>{n}</p>
+                    ))}
+                    {issues.map((n, i) => (
+                      <p key={`i-${i}`} className="text-caution">
+                        {n}
+                      </p>
+                    ))}
+                  </div>
+                </Disclosure>
+              )}
             </div>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
         <Field label="Brand" required mark={detected.brand}>
           <input
             className="ab-input"
@@ -277,14 +324,14 @@ export function CarForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-3">
-        <p className="text-xs text-faint">
+      <div className="flex items-center justify-between gap-4 border-t border-border px-5 py-4">
+        <p className="text-[13px] text-faint">
           Brand and model are required. The more fields you provide, the tighter the comparable match.
         </p>
         <button
           type="submit"
           disabled={!canSubmit}
-          className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "Comparing…" : "Compare prices"}
         </button>
@@ -308,7 +355,7 @@ function ModeTab({
       onClick={onClick}
       aria-pressed={active}
       className={
-        "rounded px-3 py-1 text-xs font-medium transition-colors " +
+        "rounded px-3 py-1.5 text-[13px] font-medium transition-colors " +
         (active ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground")
       }
     >
@@ -332,20 +379,25 @@ function Field({
 }) {
   const lowConf = mark?.detected && (mark.confidence === "low" || mark.confidence === "medium")
   return (
-    <label className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-xs font-medium text-muted">
+    <label className="flex flex-col gap-1.5">
+      <span className="flex items-center gap-1 text-[13px] font-medium text-muted">
         {label}
         {required && <span className="text-accent">*</span>}
         {mark?.detected && (
           <span
             className={"ml-auto h-1.5 w-1.5 rounded-full " + (lowConf ? "bg-caution" : "bg-accent")}
             aria-hidden="true"
+            title={lowConf ? "Low-confidence guess — please verify" : "Detected"}
           />
         )}
       </span>
       {children}
-      {hint && !lowConf && <span className="text-[11px] text-faint">{hint}</span>}
-      {lowConf && <span className="text-[11px] text-caution">Low-confidence guess — please verify</span>}
+      {hint && !lowConf && <span className="text-[13px] text-faint">{hint}</span>}
+      {lowConf && (
+        <span className="flex items-center gap-1 text-[13px] text-caution">
+          <span aria-hidden>⚠</span> Please verify
+        </span>
+      )}
     </label>
   )
 }
