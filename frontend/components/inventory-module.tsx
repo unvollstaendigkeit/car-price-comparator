@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import type { AnalysisCarResult, AnalysisEvent, AnalysisSummary, InventoryReport, InventoryRow } from "@/lib/types"
 import { loadInventoryDemo, parseInventory, streamInventoryAnalysis } from "@/lib/api"
 import { cn } from "@/lib/format"
-import { exportInventoryXlsx, openInventoryResults } from "@/lib/exports"
+import { exportInventoryXlsx, exportInventoryReport, openInventoryResults } from "@/lib/exports"
 import { Disclosure } from "@/components/disclosure"
 import { InventoryReviewTable } from "@/components/inventory-review-table"
 import { InventoryResultsTable } from "@/components/inventory-results-table"
@@ -625,6 +625,23 @@ function AnalysisPanel({
                         />
                       </svg>
                       Export results
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportInventoryReport(ranked, summary)}
+                      title="Download a self-contained HTML report (open in any browser, or Print → Save as PDF)"
+                      className="flex items-center gap-1.5 rounded-md border border-accent/50 px-3 py-1.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent/10"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+                        <path
+                          d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Export report
                     </button>
                     <button
                       type="button"

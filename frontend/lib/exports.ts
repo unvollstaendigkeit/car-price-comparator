@@ -641,6 +641,19 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
   .dmeta{grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px;
     display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
   @media (max-width:720px){.detail{grid-template-columns:1fr}}
+  /* Printing / saving as PDF: reveal every source detail (rows are collapsed
+     for interactive scanning, but a saved report must be complete) and keep the
+     themed colors so undervaluation tones survive on paper. */
+  @media print{
+    :root{color-adjust:exact;-webkit-print-color-adjust:exact}
+    body{font-size:12px}
+    .wrap{max-width:none;padding:0}
+    .hint{display:none}
+    .detrow{display:table-row !important}
+    table,.row,.grp{break-inside:avoid}
+    .row:hover{background:none}
+    .links a{white-space:normal;word-break:break-all}
+  }
 </style></head>
 <body>
   <div class="wrap">
@@ -666,4 +679,12 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
 
 export function openInventoryResults(cars: AnalysisCarResult[], summary: AnalysisSummary | null) {
   openHtmlInNewTab(inventoryResultsHtml(cars, summary))
+}
+
+/** Download the inventory results as a self-contained HTML report (the same
+ *  document "Open results" shows, but saved to disk — sendable and, via the
+ *  print styles above, ready for Print → Save as PDF with all details expanded). */
+export function exportInventoryReport(cars: AnalysisCarResult[], summary: AnalysisSummary | null) {
+  const blob = new Blob([inventoryResultsHtml(cars, summary)], { type: "text/html;charset=utf-8" })
+  downloadBlob(blob, `carval-inventory-${todayISO()}.html`)
 }
