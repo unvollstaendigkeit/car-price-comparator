@@ -46,12 +46,30 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
     .filter(Boolean)
     .join(" · ")
 
+  // Toggle open/closed, but NOT when the user is dragging to select text — a
+  // real text selection means they're copying, so leave the row as-is. (The row
+  // is a <div role="button"> rather than a <button> precisely so its text is
+  // selectable; native buttons force user-select:none and can't be copied.)
+  function handleToggle() {
+    const selected = typeof window !== "undefined" ? window.getSelection()?.toString() : ""
+    if (selected && selected.length > 0) return
+    setOpen((v) => !v)
+  }
+
   return (
     <li className="border-b border-border last:border-0">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_7rem_9rem_9rem_9rem] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2/40"
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={handleToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            setOpen((v) => !v)
+          }
+        }}
+        className="grid w-full cursor-pointer select-text grid-cols-[2.5rem_minmax(0,1fr)_7rem_9rem_9rem_9rem] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         <span className="text-center font-mono text-[13px] tabular-nums text-faint">{rank}</span>
         <span className="flex min-w-0 flex-col">
@@ -77,7 +95,7 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
             <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
-      </button>
+      </div>
 
       {open && (
         <div className="grid gap-4 border-t border-border bg-surface-2/30 px-4 py-4 md:grid-cols-2">
