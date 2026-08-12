@@ -544,9 +544,6 @@ def analyze_inventory(
         # Models that hit the whole-model time budget (the safety net firing).
         "model_timeouts": model_timeouts,
         "model_budget_s": round(model_budget_s, 1),
-        # True if the OVERALL run budget forced us to stop before every model was
-        # analyzed (so the client knows the results are partial but complete/clean).
-        "run_truncated": run_truncated,
         # --- benchmark: how much runtime is retrieval vs. valuation? --------- #
         "benchmark": {
             "total_cars": total_cars,

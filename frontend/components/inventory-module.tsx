@@ -533,12 +533,6 @@ function AnalysisPanel({
           case "source_disabled":
             setNotices((n) => [...n, `${e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"}: ${e.reason}`])
             break
-          case "run_truncated":
-            setNotices((n) => [
-              ...n,
-              `Reached the overall time limit — analyzed ${e.analyzed_groups} of ${e.total_groups} models and returned results for those. ${e.skipped_groups} model(s) were skipped; re-run to continue (cached models will be instant).`,
-            ])
-            break
           case "car_done":
             setResults((r) => [...r, e.car])
             setProgress((p) => ({ ...p, analyzed: e.analyzed, total: e.total }))
@@ -554,7 +548,6 @@ function AnalysisPanel({
               errors_total: e.errors_total,
               model_timeouts: e.model_timeouts,
               model_budget_s: e.model_budget_s,
-              run_truncated: e.run_truncated,
               ranked: e.ranked,
               benchmark: e.benchmark,
             })

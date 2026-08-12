@@ -366,62 +366,48 @@ def test_each_model_gets_a_fresh_budget():
 
 
 # --------------------------------------------------------------------------- #
-# 6. OVERALL run budget: protect the serverless function limit. Stop starting
-#    new LIVE models before the platform kill so a summary always arrives.
+# 6. No overall run budget: EVERY model in the table is always analyzed. The
+#    only wall-clock limit is per model; the run itself never truncates early.
 # --------------------------------------------------------------------------- #
-def test_overall_run_budget_truncates_cleanly():
-    """With a run budget that only fits one live model, the second is skipped
-    but the run still emits a clean summary flagged run_truncated — never a hang
-    or a mid-stream kill. This is what keeps the SSE stream inside maxDuration."""
-    prov = _BudgetProvider(slow_model="none")  # both models fast + live
-    # model_budget 5s, run_budget 5s: after the first model, now+5 > deadline so
-    # the second live model is not started.
-    events = list(inv.analyze_inventory(
-        _rows(), provider=prov, model_budget_s=5.0, run_budget_s=5.0,
-    ))
-    stages = [e["stage"] for e in events]
+def test_entire_inventory_is_always_analyzed():
+    """There is no overall time limit: with many models and a per-model budget,
+    every single model is analyzed and no run_truncated event is ever emitted."""
+    # Build an inventory of many distinct models so an old overall-budget guard
+    # would have kicked in; here it must not exist at all.
+    rows = []
+    for i in range(12):
+        rows.append({
+            "row_index": i, "row_number": i + 1,
+            "brand": "VW", "model": f"Model{i}",
+            "year": 2016, "km": 150000, "price": 9000,
+        })
+    prov = _BudgetProvider(slow_model="none")  # all models fast + live
+    events = list(inv.analyze_inventory(rows, provider=prov, model_budget_s=5.0))
 
-    # Exactly one run_truncated event, and it accounts for the skipped model.
-    truncs = [e for e in events if e["stage"] == "run_truncated"]
-    assert len(truncs) == 1, f"expected 1 run_truncated, got {len(truncs)}"
-    assert truncs[0]["analyzed_groups"] == 1
-    assert truncs[0]["skipped_groups"] == 1
-    assert truncs[0]["total_groups"] == 2
-
-    # A summary STILL arrives (stream closes cleanly) and is flagged truncated.
-    summary = next(e for e in events if e["stage"] == "summary")
-    assert summary["run_truncated"] is True
-    # Only the first model's cars were analyzed; the run did not error.
-    assert summary["counts"]["analyzed"] == 1
-    assert "error" not in stages
-
-
-def test_cached_models_run_even_when_run_budget_is_spent():
-    """The run-budget early stop must apply only to LIVE models; cached models
-    cost no network time and must always be allowed to finish."""
-    class _AllCached:
-        def peek(self, source, car, pages):
-            # Advisory: tells the run this source is served from cache (no fetch),
-            # which is what keeps the run-budget early-stop from truncating it.
-            return {"from_cache": True, "age_s": 10.0}
-
-        def retrieve(self, source, car, pages, deadline=None):
-            df = pd.DataFrame([{
-                "url": f"http://{source}/{car.model}", "price_eur": 8000,
-                "year": 2016, "km": 150000, "title": f"{car.brand} {car.model}",
-                "source": source,
-            }])
-            return RetrieveResult(df=df, err="", elapsed_s=0.0, http_requests=0,
-                                  from_cache=True, age_s=10.0)
-
-    # Even with a zero run budget, cached models are not truncated.
-    events = list(inv.analyze_inventory(
-        _rows(), provider=_AllCached(), model_budget_s=5.0, run_budget_s=0.0,
-    ))
+    # No overall-run truncation exists anymore.
     assert not any(e["stage"] == "run_truncated" for e in events)
+    # Every model produced a result and the run completed cleanly.
     summary = next(e for e in events if e["stage"] == "summary")
-    assert summary["counts"]["analyzed"] == 2
-    assert summary["run_truncated"] is False
+    assert summary["counts"]["analyzed"] == 12
+    assert summary["benchmark"]["unique_groups"] == 12
+    assert "error" not in [e["stage"] for e in events]
+
+
+def test_slow_model_does_not_stop_the_run():
+    """A model that hits its per-model budget is abandoned, but the run keeps
+    going and still analyzes every other model — no overall limit involved."""
+    prov = _BudgetProvider(slow_model="model0", slow_sleep=30.0)
+    rows = [
+        {"row_index": 0, "row_number": 1, "brand": "VW", "model": "Model0",
+         "year": 2016, "km": 150000, "price": 9000},
+        {"row_index": 1, "row_number": 2, "brand": "VW", "model": "Model1",
+         "year": 2016, "km": 150000, "price": 9000},
+    ]
+    events = list(inv.analyze_inventory(rows, provider=prov, model_budget_s=0.5))
+    # The slow model timed out (per-model budget), the fast one still analyzed.
+    assert any(e["stage"] == "group_timeout" for e in events)
+    summary = next(e for e in events if e["stage"] == "summary")
+    assert summary["counts"]["analyzed"] == 2  # every car still valued
 
 
 class _MonkeyPatch:

@@ -268,8 +268,6 @@ export interface AnalysisSummary {
   /** Models that hit the whole-model wall-clock budget (safety net firing). */
   model_timeouts?: number
   model_budget_s?: number
-  /** True if the overall run budget stopped us before every model was analyzed. */
-  run_truncated?: boolean
   ranked: AnalysisCarResult[]
   benchmark?: {
     total_cars: number
@@ -343,13 +341,6 @@ export type AnalysisEvent =
       reason: string
     }
   | { stage: 'source_disabled'; source: string; reason: string }
-  | {
-      stage: 'run_truncated'
-      reason: string
-      analyzed_groups: number
-      skipped_groups: number
-      total_groups: number
-    }
   | { stage: 'car_done'; analyzed: number; total: number; car: AnalysisCarResult }
   | ({ stage: 'summary' } & AnalysisSummary)
   | { stage: 'error'; label?: string; message: string }
