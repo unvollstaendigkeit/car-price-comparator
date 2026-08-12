@@ -229,7 +229,12 @@ export function buildXlsxBlob(sheets: Sheet[]): Blob {
     entries.push({ name: `xl/worksheets/sheet${i + 1}.xml`, data: enc.encode(sheetXml(s.rows)) })
   })
 
-  return new Blob([zip(entries)], {
+  // Copy into a fresh, definitely-ArrayBuffer-backed view so the Blob part type
+  // is unambiguous under `strict` (zip() returns a Uint8Array<ArrayBufferLike>).
+  const bytes = zip(entries)
+  const buf = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buf).set(bytes)
+  return new Blob([buf], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   })
 }
