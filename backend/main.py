@@ -208,6 +208,10 @@ def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingRespo
                 yield _sse(event)
         except Exception as e:  # noqa: BLE001 - surface any engine error to the client
             yield _sse({"stage": "error", "label": "Analysis failed", "message": str(e)})
+        finally:
+            # Persist the accumulated market cache ONCE, after streaming ends, so
+            # the hot path never pays for disk I/O / pickling mid-run.
+            provider.flush()
 
     return StreamingResponse(
         gen(),

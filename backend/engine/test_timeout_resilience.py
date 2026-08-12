@@ -418,6 +418,109 @@ def test_slow_model_does_not_stop_the_run():
     assert summary["counts"]["analyzed"] == 2  # every car still valued
 
 
+# --------------------------------------------------------------------------- #
+# 7. Cache persistence must be OFF the hot path. Pickling the whole (growing)
+#    store on every live fetch stalls the generator thread and gets slower as a
+#    run proceeds — the "a single model appears to run for 60-70s" bug. The
+#    store must be recorded in memory during the run and saved exactly once.
+# --------------------------------------------------------------------------- #
+def _mk_inv_car(brand="VW", model="Golf"):
+    from single_car import SingleCarInput
+    return SingleCarInput(brand=brand, model=model, year=2016, km=150000, price_eur=9000)
+
+
+def test_persistent_cache_defers_save_to_flush(tmp_path_str=None):
+    """A live retrieve records into the store in memory but writes NOTHING to
+    disk; only flush() persists. This keeps GIL-heavy pickling out of the
+    per-fetch hot path so the SSE generator never stalls mid-run."""
+    import os
+    import tempfile
+    import market_provider as mp
+
+    save_calls = {"n": 0}
+    orig_save = mp.MarketStore.save
+
+    def _counting_save(self, path=mp.DEFAULT_STORE_PATH):
+        save_calls["n"] += 1
+        return orig_save(self, path)
+
+    # Live fetch returns instantly with one row — no network.
+    def _fake_fetch(car, pages, delay, deadline=None):
+        return pd.DataFrame([{
+            "url": "http://x/1", "price_eur": 8000, "year": 2016,
+            "km": 150000, "title": f"{car.brand} {car.model}", "source": "autobazar",
+        }]), ""
+
+    path = os.path.join(tempfile.mkdtemp(), "cache.pkl")
+    mp.MarketStore.save = _counting_save
+    old_ab, old_bz = mp.retrieve_autobazar, mp.retrieve_bazos
+    mp.retrieve_autobazar = _fake_fetch
+    mp.retrieve_bazos = _fake_fetch
+    try:
+        prov = mp.PersistentCacheProvider(path=path, force_refresh=True)
+        car = _mk_inv_car()
+        for _ in range(5):
+            prov.retrieve("autobazar", car, 1, deadline=None)
+            prov.retrieve("bazos", car, 1, deadline=None)
+        # 10 live retrieves, and NOT ONE of them touched the disk.
+        assert save_calls["n"] == 0, f"retrieve must not save; saved {save_calls['n']}x"
+        assert not os.path.exists(path), "no cache file should exist before flush()"
+
+        prov.flush()
+        assert save_calls["n"] == 1, "flush() persists exactly once"
+        assert os.path.exists(path), "flush() must write the cache file"
+    finally:
+        mp.MarketStore.save = orig_save
+        mp.retrieve_autobazar = old_ab
+        mp.retrieve_bazos = old_bz
+
+
+def test_concurrent_record_and_save_never_race():
+    """An abandoned worker can call record() while the main thread saves. The
+    provider lock + snapshot-before-pickle must make that safe (no
+    'dictionary changed size during iteration', no crash)."""
+    import os
+    import tempfile
+    import market_provider as mp
+
+    path = os.path.join(tempfile.mkdtemp(), "cache.pkl")
+    prov = mp.PersistentCacheProvider(path=path, force_refresh=True)
+    stop = threading.Event()
+    errors: list[BaseException] = []
+
+    def _hammer_record():
+        i = 0
+        while not stop.is_set():
+            try:
+                with prov._lock:
+                    prov.store.record("autobazar", "VW", f"M{i}", 1,
+                                      pd.DataFrame([{"price_eur": 1000 + i}]), "", 0.0)
+                i += 1
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+                return
+
+    def _hammer_save():
+        while not stop.is_set():
+            try:
+                prov.flush()
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+                return
+
+    threads = [threading.Thread(target=_hammer_record),
+               threading.Thread(target=_hammer_save)]
+    for t in threads:
+        t.start()
+    time.sleep(0.5)
+    stop.set()
+    for t in threads:
+        t.join(timeout=5)
+    assert not errors, f"concurrent record/save raced: {errors[:2]}"
+    # The store still loads cleanly (atomic rename never left a torn file).
+    assert mp.MarketStore.load(path).entries, "cache must be loadable after the race"
+
+
 class _MonkeyPatch:
     """Tiny standalone monkeypatch (setattr + undo) for the __main__ runner."""
     def __init__(self):

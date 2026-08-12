@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -169,9 +170,19 @@ class MarketStore:
 
     # -- persistence ------------------------------------------------------- #
     def save(self, path: str = DEFAULT_STORE_PATH) -> str:
+        """Persist atomically. We snapshot `entries` (a shallow dict copy) BEFORE
+        pickling so a concurrent `record()` on another thread can't mutate the
+        dict mid-iteration ("dictionary changed size during iteration") — the
+        per-model value dicts are never mutated in place, so a shallow copy is a
+        safe, cheap point-in-time view. The pickle is written to a temp file and
+        atomically renamed, so a crash or a killed run can never leave a
+        half-written, unloadable cache behind."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            pickle.dump(self.entries, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        snapshot = dict(self.entries)
+        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+        with open(tmp, "wb") as fh:
+            pickle.dump(snapshot, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)
         return path
 
     @classmethod
@@ -285,12 +296,20 @@ class PersistentCacheProvider:
         self.ttl_s = ttl_s
         self.delay = delay
         self.force_refresh = force_refresh
+        # Serializes ALL access to the shared store. Retrieval runs on worker
+        # threads (see inventory_run's per-model watchdog), and an ABANDONED
+        # worker may still call `record()` after the main thread has moved to the
+        # next model's `peek()`. Without this lock those concurrent reads/writes
+        # race the same dict. The lock is held only for fast in-memory dict ops —
+        # never across a network fetch — so it cannot itself stall the run.
+        self._lock = threading.RLock()
 
     def peek(self, source: str, car, pages: int) -> Optional[dict]:
         """Report expected cache status for this source WITHOUT fetching."""
         if self.force_refresh:
             return None
-        hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
+        with self._lock:
+            hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
         if hit is None:
             return None
         return {"from_cache": True, "age_s": MarketStore.age_of(hit)}
@@ -298,7 +317,8 @@ class PersistentCacheProvider:
     def retrieve(self, source: str, car, pages: int,
                  deadline: Optional[float] = None) -> RetrieveResult:
         if not self.force_refresh:
-            hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
+            with self._lock:
+                hit = self.store.get_fresh(source, car.brand, car.model, pages, self.ttl_s)
             if hit is not None:
                 return RetrieveResult(
                     hit["df"].copy(deep=True), hit["err"], 0.0, 0,
@@ -313,14 +333,21 @@ class PersistentCacheProvider:
         http_reqs = http_client.request_count() - reqs_before
         elapsed = time.perf_counter() - t0
         err = err or ""
-        self.store.record(source, car.brand, car.model, pages, df, err, elapsed)
-        self._save()
+        # Record the fresh pool in memory only. We deliberately do NOT persist to
+        # disk here: pickling the whole (growing) store on every live fetch is a
+        # GIL-heavy operation that stalls the generator thread and gets slower as
+        # the run proceeds — the "a single model appears to run for 60-70s" bug.
+        # The store is persisted ONCE at the end of the run via `flush()`.
+        with self._lock:
+            self.store.record(source, car.brand, car.model, pages, df, err, elapsed)
         return RetrieveResult(df=df, err=err, elapsed_s=elapsed, http_requests=http_reqs,
                               from_cache=False, age_s=0.0)
 
-    def _save(self) -> None:
+    def flush(self) -> None:
+        """Persist the accumulated store to disk exactly once (call after a run).
+        Best-effort: a failed save must never surface as an analysis error."""
         try:
-            self.store.save(self.path)
+            with self._lock:
+                self.store.save(self.path)
         except Exception:
-            # Persistence is best-effort; a failed save must never break analysis.
             pass
