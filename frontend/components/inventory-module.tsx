@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import type { AnalysisCarResult, AnalysisEvent, AnalysisSummary, InventoryReport, InventoryRow } from "@/lib/types"
 import { loadInventoryDemo, parseInventory, streamInventoryAnalysis } from "@/lib/api"
 import { cn } from "@/lib/format"
+import { exportInventoryXlsx, openInventoryResults } from "@/lib/exports"
 import { Disclosure } from "@/components/disclosure"
 import { InventoryReviewTable } from "@/components/inventory-review-table"
 import { InventoryResultsTable } from "@/components/inventory-results-table"
@@ -606,6 +607,44 @@ function AnalysisPanel({
           <div className="flex flex-wrap items-center gap-2">
             {status !== "running" && (
               <>
+                {ranked.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => exportInventoryXlsx(ranked)}
+                      title="Download an Excel workbook of every analyzed car (Autobazar.eu and Bazoš.sk kept separate)"
+                      className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[13px] font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+                        <path
+                          d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Export results
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openInventoryResults(ranked, summary)}
+                      title="Open a clean, scannable results view in a new tab"
+                      className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
+                    >
+                      Open results
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+                        <path
+                          d="M14 5h5v5m0-5-7 7M10 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-4"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={onRefreshRun}

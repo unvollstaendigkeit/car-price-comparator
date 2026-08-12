@@ -71,7 +71,7 @@ export function SingleCarModule() {
         </div>
       )}
 
-      {result && !busy && <SingleCarResult result={result} />}
+      {result && !busy && <SingleCarResult result={result} onClear={handleClear} />}
     </div>
   )
 }
