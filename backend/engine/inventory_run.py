@@ -63,14 +63,6 @@ BLOCK_LIMIT = 3          # consecutive blocks on a source -> disable it
 # "stuck at ~1m52s then dead". Keeping the per-model budget small guarantees the
 # run keeps advancing through models within the function's lifetime.
 MODEL_BUDGET_S = 25.0
-# Overall wall-clock ceiling for the ENTIRE run. The backend is a Vercel Python
-# function that is HARD-KILLED at maxDuration (see vercel.json). If we ran right
-# up to that limit the platform would terminate the SSE stream mid-flight and
-# the client would never receive a `summary` (this is the "stuck then dead"
-# symptom). We instead stop starting new models a safe margin BEFORE the kill,
-# emit a partial summary for everything analyzed so far, and close the stream
-# cleanly. Set to maxDuration (300s) minus headroom for the final flush.
-RUN_BUDGET_S = 270.0
 # Only deepen a model's pool when the shallow fetch looks like it had a full
 # page (i.e. more pages plausibly exist). Avoids wasting requests on models that
 # genuinely only have a handful of ads.
@@ -183,7 +175,6 @@ def analyze_inventory(
     max_pages: int = MAX_PAGES,
     block_limit: int = BLOCK_LIMIT,
     model_budget_s: float = MODEL_BUDGET_S,
-    run_budget_s: float = RUN_BUDGET_S,
     provider=None,
 ) -> Iterator[dict]:
     """
@@ -230,13 +221,6 @@ def analyze_inventory(
     # Fresh, run-scoped instrumentation window so http_client.request_count()
     # reflects only THIS run's real network GETs.
     http_client.reset_log()
-
-    # Overall run deadline (see RUN_BUDGET_S): we stop STARTING new models once
-    # we're within one model-budget of this, so the run always finishes with a
-    # clean summary instead of being killed mid-stream by the platform. Measured
-    # from here; `run_t0` below is the canonical timing origin for the benchmark.
-    run_deadline = time.perf_counter() + run_budget_s
-    run_truncated = False       # True if we stopped early to protect the summary
 
     consec_blocks = {"autobazar": 0, "bazos": 0}
     disabled: set[str] = set()
@@ -371,25 +355,6 @@ def analyze_inventory(
             "bazos": _status(peek("bazos", rep_car, start_pages)),
         }
         group_cached = cache_status["autobazar"]["from_cache"] and cache_status["bazos"]["from_cache"]
-
-        # Overall-run protection: if a LIVE model could push us past the run
-        # deadline, stop starting new live models and wrap up with a summary.
-        # Cached models cost no network time, so we always let those finish.
-        # We NEVER truncate before the first model (gi > 1) so a run always makes
-        # progress even if a single model's budget alone approaches the run budget.
-        if gi > 1 and not group_cached and time.perf_counter() + model_budget_s > run_deadline:
-            run_truncated = True
-            remaining = len(groups) - gi + 1
-            yield {
-                "stage": "run_truncated",
-                "reason": (f"overall time budget ({run_budget_s:.0f}s) nearly reached; "
-                           f"stopped before {remaining} more live model(s) to return "
-                           f"results safely"),
-                "analyzed_groups": gi - 1,
-                "skipped_groups": remaining,
-                "total_groups": len(groups),
-            }
-            break
 
         yield {
             "stage": "group_start",
