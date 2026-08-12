@@ -249,10 +249,6 @@ def analyze_inventory(
         except Exception:  # noqa: BLE001 - peek is advisory only
             return None
 
-    # Small grace over the cooperative deadline so the lower layers get a chance
-    # to stop cleanly (nicer notes, real partial data) before the watchdog fires.
-    _BUDGET_GRACE_S = 2.0
-
     def _retrieve_within_budget(source: str, car, pages: int,
                                 deadline: Optional[float]) -> RetrieveResult:
         """Run provider.retrieve, but never block past the per-model budget.
@@ -278,9 +274,17 @@ def analyze_inventory(
             target=_work, name=f"retrieve:{source}", daemon=True,
         ).start()
 
-        budget_left = deadline - time.perf_counter()
-        if not done.wait(max(0.0, budget_left) + _BUDGET_GRACE_S):
-            # Overran even the grace window: abandon and move on immediately.
+        # HARD per-model ceiling: wait ONLY until the shared absolute deadline,
+        # never past it. We previously waited `budget_left + grace` (i.e. until
+        # deadline + 2s), which let a single model run ~2s OVER its budget — the
+        # "a car still takes >25s" symptom. The cooperative lower layers still
+        # aim to finish before `deadline` via their own per-request caps; if one
+        # is still running the instant the deadline arrives we abandon it here,
+        # so this (brand, model) group's wall-clock can never exceed
+        # model_budget_s. The abandoned worker is a daemon and winds down on its
+        # own (its next deadline check fails), so nothing leaks.
+        if not done.wait(max(0.0, deadline - time.perf_counter())):
+            # Budget reached: abandon the worker and move on immediately.
             return RetrieveResult(
                 pd.DataFrame(),
                 f"TIMEOUT: model time budget ({model_budget_s:.0f}s) exceeded; "

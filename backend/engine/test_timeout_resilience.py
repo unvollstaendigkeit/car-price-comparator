@@ -288,11 +288,14 @@ class _UncooperativeProvider:
 
 
 def test_watchdog_abandons_uncooperative_retrieve():
-    """Even if provider.retrieve blocks 30s ignoring a 0.5s budget, the model is
-    abandoned within budget+grace and the whole run stays bounded and completes."""
-    prov = _UncooperativeProvider(block_s=30.0)
+    """Even if provider.retrieve blocks 20s ignoring the budget, the slow model is
+    abandoned AT the budget (a HARD ceiling, no grace overrun) and the run still
+    completes and values every car. This is the exact bug the user hit: a request
+    running past the per-model budget so a car appears stuck for >budget seconds."""
+    budget = 1.0
+    prov = _UncooperativeProvider(block_s=20.0)
     t0 = time.perf_counter()
-    events = list(inv.analyze_inventory(_rows(), provider=prov, model_budget_s=0.5))
+    events = list(inv.analyze_inventory(_rows(), provider=prov, model_budget_s=budget))
     wall = time.perf_counter() - t0
 
     # The uncooperative model was abandoned (a group_timeout fired for Golf)...
@@ -301,9 +304,14 @@ def test_watchdog_abandons_uncooperative_retrieve():
     # ...the run completed and valued every car anyway...
     summary = next(e for e in events if e["stage"] == "summary")
     assert summary["counts"]["analyzed"] == 2
-    # ...and crucially it did NOT block for anywhere near the 30s the layer wanted.
-    # budget 0.5s + a small grace per abandoned fetch, nowhere near 30s.
-    assert wall < 10.0, f"watchdog must bound the run, took {wall:.2f}s"
+    # ...and crucially the slow model was cut at the budget, NOT budget + grace.
+    # The only slow group is Golf's autobazar fetch; the other model is instant,
+    # so total wall is essentially one budget window. Under the old grace-based
+    # watchdog this was ~budget + 2s; the hard ceiling keeps it at ~budget.
+    assert wall < budget + 0.8, (
+        f"per-model wall-clock must be a HARD cap at the budget ({budget}s); "
+        f"took {wall:.2f}s (old grace behavior would be ~{budget + 2:.1f}s)"
+    )
 
 
 class _BudgetProvider:
