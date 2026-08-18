@@ -55,7 +55,7 @@ from inventory_api import (  # noqa: E402
     parse_upload,
 )
 from inventory_run import analyze_inventory  # noqa: E402
-from market_provider import PersistentCacheProvider  # noqa: E402
+from market_provider import PersistentCacheProvider, MarketCollectorProvider  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -190,12 +190,25 @@ class InventoryAnalyzePayload(BaseModel):
     refresh: bool = False  # force a live refresh, ignoring cached pools
 
 
-@app.post("/api/inventory/analyze/stream")
-def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
+# Explicit provider selection for THIS endpoint only (/api/compare and
+# /api/compare/stream are untouched and always use live retrieval directly).
+# Default (unset, or anything other than "market_collector") preserves the
+# CURRENT PersistentCacheProvider behavior exactly -- never changes silently.
+# Only INVENTORY_MARKET_PROVIDER=market_collector switches to the read-only,
+# offline, single-pinned-snapshot MarketCollectorProvider; there is no
+# automatic fallback between the two in either direction.
+def _build_inventory_provider(payload: "InventoryAnalyzePayload"):
+    if os.environ.get("INVENTORY_MARKET_PROVIDER") == "market_collector":
+        return MarketCollectorProvider()
     # A persistent, cache-first market layer: fresh (source, brand, model) pools
     # are reused across runs with ZERO HTTP; misses/expiries fetch live and
     # update the cache. `refresh=true` forces a live refresh of every model.
-    provider = PersistentCacheProvider(delay=payload.delay, force_refresh=payload.refresh)
+    return PersistentCacheProvider(delay=payload.delay, force_refresh=payload.refresh)
+
+
+@app.post("/api/inventory/analyze/stream")
+def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
+    provider = _build_inventory_provider(payload)
 
     def gen():
         try:

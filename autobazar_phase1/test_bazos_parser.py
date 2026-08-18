@@ -12,6 +12,16 @@ Run:  python -m pytest test_bazos_parser.py -q
 
 from __future__ import annotations
 
+import os
+import sys
+
+# Repointed to import the ACTUAL production module in backend/engine/ rather
+# than this directory's own (older) copy of bazos_scraper.py. Safe because the
+# functions this file tests (the extract_* regex parsers) are textually
+# identical between the two copies -- only fetch() (network I/O, untested
+# here) has diverged. See the coverage-audit report for the verification.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "engine"))
+
 from bazos_scraper import (
     extract_year,
     extract_km,

@@ -11,6 +11,15 @@ Run: python test_inventory_normalizer.py
 
 from __future__ import annotations
 
+import os
+import sys
+
+# Repointed to import the ACTUAL production modules in backend/engine/ rather
+# than this directory's own (older) copies. Safe: inventory_normalizer.py and
+# inventory_loader.py are byte-identical between the two locations (verified
+# via diff). See the coverage-audit report for the verification.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "engine"))
+
 import pandas as pd
 
 from inventory_normalizer import (

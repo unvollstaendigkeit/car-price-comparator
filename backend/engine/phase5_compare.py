@@ -125,6 +125,7 @@ BROAD = RuleSet(
     power_tol_kw=30,
     require_same_variant=False,
     require_same_transmission=False,
+    require_known_year=True,
 )
 
 

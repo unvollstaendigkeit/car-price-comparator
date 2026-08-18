@@ -19,6 +19,18 @@ Run:  python test_retrieval_and_outliers.py
 
 from __future__ import annotations
 
+import os
+import sys
+
+# Repointed to import the ACTUAL production modules in backend/engine/ rather
+# than this directory's own (older) copies. Safe: phase5_compare.py is
+# byte-identical between the two locations, and every function this file
+# tests from phase6_validate.py (_model_slug_candidates, _ab_slugs,
+# _bazos_query, estimate, qualifies_as_vehicle) is textually identical too --
+# only the retrieval/timeout plumbing and the (here-untested) mileage_similarity
+# addition have diverged. See the coverage-audit report for the verification.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "engine"))
+
 import pandas as pd
 
 from phase6_validate import (

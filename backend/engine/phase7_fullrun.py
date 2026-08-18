@@ -41,7 +41,7 @@ import pandas as pd
 from phase6_validate import (
     InvCar, load_inventory, to_invcar,
     retrieve_autobazar, retrieve_bazos,
-    match, adaptive_estimate,
+    match, adaptive_estimate, retained_pool,
     MIN_USABLE, BROAD, fmt, top_links,
     MILEAGE_RANK,
 )
@@ -193,6 +193,15 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
     ab_est, ab_matched = adaptive_estimate(car, ab_df)
     bz_est, bz_matched = adaptive_estimate(car, bz_df)
 
+    # Parallel, additive view: the disjoint STRICT/MODERATE-only/BROAD-only
+    # retained pool (see retained_pool's docstring). Not yet used for pricing
+    # or confidence -- adaptive_estimate above remains the sole production
+    # estimator. This only surfaces per-tier counts for inspection/UI; the
+    # full tagged DataFrames are available by calling retained_pool(car, df)
+    # directly (same inputs any caller here already has).
+    ab_retained = retained_pool(car, ab_df)
+    bz_retained = retained_pool(car, bz_df)
+
     flag, reasons = confidence_flag(car, ab_est, bz_est)
     spread = median_spread_pct(ab_est["market_median"], bz_est["market_median"])
     pct_gap = None
@@ -232,6 +241,13 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         "ab_comp_km_p75": ab_est["mileage"]["comp_km_p75"],
         "ab_mileage_note": ab_est["mileage"]["note"],
 
+        # --- Autobazar retained pool (disjoint STRICT/MODERATE-only/BROAD-only;
+        # observational only, not yet used for pricing -- see retained_pool()) ---
+        "ab_n_strict": ab_retained["n_strict"],
+        "ab_n_moderate": ab_retained["n_moderate"],
+        "ab_n_broad": ab_retained["n_broad"],
+        "ab_n_retained": ab_retained["n_total"],
+
         # --- Bazos (independent) ---
         "bz_tier": bz_est["tier_used"],
         "bz_comparable_count": bz_est["comparable_count"],
@@ -245,6 +261,13 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         "bz_comp_km_p25": bz_est["mileage"]["comp_km_p25"],
         "bz_comp_km_p75": bz_est["mileage"]["comp_km_p75"],
         "bz_mileage_note": bz_est["mileage"]["note"],
+
+        # --- Bazos retained pool (disjoint STRICT/MODERATE-only/BROAD-only;
+        # observational only, not yet used for pricing -- see retained_pool()) ---
+        "bz_n_strict": bz_retained["n_strict"],
+        "bz_n_moderate": bz_retained["n_moderate"],
+        "bz_n_broad": bz_retained["n_broad"],
+        "bz_n_retained": bz_retained["n_total"],
 
         # --- cross-source (shown, never merged into one price) ---
         "median_spread_pct": round(spread, 1) if spread is not None else None,

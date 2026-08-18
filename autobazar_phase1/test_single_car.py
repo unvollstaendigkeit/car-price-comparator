@@ -11,6 +11,20 @@ isolating the single-car input path from live-retrieval nondeterminism.
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# Repointed to import the ACTUAL production modules in backend/engine/ rather
+# than this directory's own (older) copies. Safe: every assertion here
+# compares two values produced by the SAME imported evaluate_car (inventory
+# path vs. single-car path), so it's self-consistent regardless of which
+# copy is imported; the one substantive divergence (confidence_flag's HIGH
+# tier now also requiring good mileage evidence) doesn't affect any
+# assertion here, since the synthetic listings clone the car's own km
+# exactly (mileage category is always "good" in these fixtures) and no test
+# asserts a literal flag value. See the coverage-audit report.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", "engine"))
+
 import dataclasses
 
 import pandas as pd

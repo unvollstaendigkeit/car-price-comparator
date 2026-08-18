@@ -532,11 +532,68 @@ def rule_brand(car: InvCar, row) -> str:
     return MATCH if _title_has_brand(car, str(title)) else MISMATCH
 
 
+# Distinct model-line markers that must NOT be treated as the searched model,
+# even though the model string is a literal substring of the title (e.g. a
+# "Passat CC" ad's title does contain "Passat") or the title's own model
+# candidate would otherwise resolve as a match (e.g. "Proace Verso" contains
+# "Verso"). Each entry is a genuinely different product line, not a trim/badge
+# of the same car. SUFFIXES matches "{model} {marker}" (confirmed by direct
+# inspection during the 2026-08-17 valuation audit: Passat CC/Alltrack
+# contaminating a Passat pool; Golf Sportsvan is its own market-collector
+# collection target). PREFIXES matches "{marker} {model}" -- needed because a
+# prefix-style distinct product (e.g. Toyota "Proace Verso" contaminating a
+# "Verso" pool, confirmed during the 2026-08-17 matching-quality audit) is not
+# expressible as a suffix pattern. Deliberately a short, evidenced list, not a
+# general model-line database -- every other (brand, model) pair keeps the
+# prior soft behavior unchanged.
+_DISTINCT_MODEL_LINE_SUFFIXES = {
+    ("volkswagen", "passat"): ("cc", "alltrack"),
+    ("volkswagen", "golf"): ("sportsvan",),
+}
+_DISTINCT_MODEL_LINE_PREFIXES = {
+    ("toyota", "verso"): ("proace",),
+}
+
+
 def rule_model_soft(car: InvCar, row) -> str:
     title = _clean(row["title"])
     if not title:
         return UNKNOWN
-    return MATCH if car.model.lower() in str(title).lower() else UNKNOWN
+    t = str(title).lower()
+    model = car.model.lower()
+    # Resolve through the SAME brand-alias set rule_brand/_title_has_brand
+    # already use (e.g. "VW" and "Volkswagen" both need to reach the
+    # "volkswagen" entry above) -- without this, a car whose inventory brand
+    # is literally "VW" would never match the "volkswagen" key and the
+    # exclusion would silently never fire for it.
+    brand_aliases = _BRAND_ALIASES.get(car.brand.lower(), {car.brand.lower()})
+    for alias in brand_aliases:
+        for suffix in _DISTINCT_MODEL_LINE_SUFFIXES.get((alias, model), ()):
+            if f"{model} {suffix}" in t:
+                return MISMATCH
+        for prefix in _DISTINCT_MODEL_LINE_PREFIXES.get((alias, model), ()):
+            if f"{prefix} {model}" in t:
+                return MISMATCH
+
+    # Locale-aware presence check: the model must be represented by the
+    # searched model string itself OR one of its known locale/format variants
+    # (reusing _model_slug_candidates, the same resolver already used for
+    # Autobazar URL-slug matching -- e.g. BMW "3 Series" -> SK "Rad 3",
+    # Mercedes "A-Class" -> SK "A trieda") -- so a genuine same-car listing in
+    # a locale-renamed or differently-formatted title (a hyphen dropped, e.g.
+    # "Cx-5" -> "CX5") is never rejected. Confirmed against the 2026-08-17
+    # audit's full currently-matched population: zero false rejections.
+    candidates = set(_model_slug_candidates(car.model))
+    candidates.add(model)
+    for cand in candidates:
+        if cand in t or cand.replace(" ", "") in t or cand.replace("-", " ") in t:
+            return MATCH
+    # Title exists but the model isn't represented by any known form of it --
+    # a different vehicle entirely (e.g. a Bazos free-text search for
+    # "Volkswagen Touran" returning a "Golf Sportsvan" ad; confirmed during the
+    # 2026-08-17 matching-quality audit). Previously this fell through as
+    # UNKNOWN and was silently admitted; it is now a hard reject.
+    return MISMATCH
 
 
 def rule_fuel(car: InvCar, row) -> str:
@@ -597,6 +654,65 @@ def rule_transmission(car: InvCar, row, require: bool) -> str:
     return MATCH if str(val).lower() == car.transmission.lower() else MISMATCH
 
 
+# Canonical body-style classes. Keys are lowercased raw values observed in
+# either the inventory or the collected listing data; values are the class
+# they represent. Purely translation/formatting equivalents (Kombi/Combi are
+# the Slovak/Czech/German word for the English "Estate"; "SUV / Off-road" and
+# the concatenated-field artifact "Suvkaroséria" both mean plain SUV;
+# "Limuzína" is the Slovak word for "Sedan"/"Limousine"; "Kabriolet" is the
+# Slovak word for "Cabriolet" -- the Limuzína/Kabriolet pair confirmed during
+# the 2026-08-18 verification pass, after a Limuzína-tagged comparable was
+# found slipping through as UNKNOWN and, once it became a car's only
+# remaining match, exposed an unprotected outlier price) map to the SAME
+# class as their English form -- these are NOT treated as different body
+# styles. Values with no automotive body-style meaning at all (e.g. "Biela" =
+# Slovak for the colour "White"; "Má" = a stray description fragment -- both
+# confirmed data-quality artifacts) are deliberately absent from this table,
+# so they fall through to UNKNOWN rather than being forced into a body class
+# or a false conflict. Compound/ambiguous labels ("Mpv/Van", "SUV /
+# Hatchback", "SUV / Combi") are deliberately NOT included yet either --
+# pending a separate audit -- so they also fall through to UNKNOWN.
+_BODY_STYLE_CLASSES = {
+    "estate": "estate", "kombi": "estate", "combi": "estate",
+    "sports tourer": "estate", "variant": "estate", "touring": "estate",
+    "suv": "suv", "suv / off-road": "suv", "off-road": "suv",
+    "suvkaroséria": "suv", "crossover": "suv",
+    "hatchback": "hatchback", "liftback": "liftback",
+    "sedan": "sedan", "limousine": "sedan", "limuzína": "sedan",
+    "coupe": "coupe", "coupé": "coupe",
+    "mpv": "mpv", "van": "mpv",
+    "cabrio": "cabrio", "cabriolet": "cabrio", "convertible": "cabrio",
+    "kabriolet": "cabrio",
+}
+
+
+def _canon_body_style(value) -> Optional[str]:
+    value = _clean(value)
+    if value is None:
+        return None
+    return _BODY_STYLE_CLASSES.get(str(value).strip().lower())
+
+
+def rule_body_type(car: InvCar, row) -> str:
+    if not car.body_type:
+        return NA
+    car_class = _canon_body_style(car.body_type)
+    if car_class is None:
+        # Our own body_type is present but not a recognized class (shouldn't
+        # normally happen post-norm_body, but never treat unrecognized data
+        # as a rejection reason).
+        return NA
+    val = _clean(row["body_type"])
+    if val is None:
+        return UNKNOWN
+    row_class = _canon_body_style(val)
+    if row_class is None:
+        # Garbage/unrecognized value on the comparable side (e.g. a colour or
+        # a stray fragment) -- treated as unknown, never a mismatch.
+        return UNKNOWN
+    return MATCH if row_class == car_class else MISMATCH
+
+
 def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
     outcomes = {
         "brand": rule_brand(car, row),
@@ -607,6 +723,7 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
         "km": rule_km(car, row, rules.km_pct, rules.km_floor),
         "power": rule_power(car, row, rules.power_tol_kw),
         "transmission": rule_transmission(car, row, rules.require_same_transmission),
+        "body_type": rule_body_type(car, row),
     }
     passed = not any(v == MISMATCH for v in outcomes.values())
     return passed, outcomes
@@ -669,7 +786,7 @@ def match(car: InvCar, df: pd.DataFrame, rules: RuleSet) -> tuple[pd.DataFrame, 
             keep.append(idx)
             trails.append(outcomes)
     out = df.loc[keep].copy().reset_index(drop=True)
-    for f in ["brand", "model", "fuel", "variant", "year", "km", "power", "transmission"]:
+    for f in ["brand", "model", "fuel", "variant", "year", "km", "power", "transmission", "body_type"]:
         out[f"rule_{f}"] = [t[f] for t in trails]
     return out, disq
 
@@ -951,6 +1068,88 @@ def adaptive_estimate(car: InvCar, source_df: pd.DataFrame) -> dict:
     est["tier_used"] = rs.name
     est["tier_counts"] = "/".join(f"{t.name[:3]}:{per_tier[t.name]}" for t in TIERS)
     return est, matched
+
+
+def _row_identity_key(row) -> object:
+    """Best available stable identity for a listing row, for de-duplicating the
+    SAME physical listing across tier pools. listing_id/url are collection-time
+    identifiers and are preferred; title is the last-resort fallback for rows
+    missing both (matches the fallback already used by the tier-membership
+    de-duplication logic validated in the 2026-08-17 simulation)."""
+    return row.get("listing_id") or row.get("url") or row.get("title")
+
+
+def retained_pool(car: InvCar, source_df: pd.DataFrame) -> dict:
+    """
+    Evaluate STRICT, MODERATE, and BROAD against one source's candidates and
+    partition the result into three DISJOINT tier bands, instead of picking a
+    single winning tier the way `adaptive_estimate` does.
+
+    Because STRICT's tolerances are a strict subset of MODERATE's, which are a
+    strict subset of BROAD's (and MODERATE/BROAD additionally drop STRICT's
+    variant/transmission requirements rather than adding new ones), every
+    listing STRICT admits is also admitted by MODERATE and BROAD, and every
+    listing MODERATE admits is also admitted by BROAD -- i.e.
+    STRICT ⊆ MODERATE ⊆ BROAD as matched sets. Naively concatenating the three
+    matched DataFrames would therefore count a STRICT-level match up to three
+    times. Partitioning by "the tightest tier that already admits this
+    listing" is what makes each listing appear exactly once:
+
+        strict        = matched by STRICT
+        moderate_only = matched by MODERATE, not already in strict
+        broad_only    = matched by BROAD, not already in moderate (or strict)
+
+    This function does NOT decide how to weight or aggregate the three bands
+    into a single price -- it only assembles and tags the retained pool so it
+    can be inspected. `adaptive_estimate` (unchanged) remains the production
+    estimator; this is an additional, parallel view over the same matching
+    rules and tolerances.
+
+    Returns:
+        {
+          "strict": DataFrame,        # STRICT-matched rows, "tier"="strict"
+          "moderate_only": DataFrame, # MODERATE-only rows,  "tier"="moderate"
+          "broad_only": DataFrame,    # BROAD-only rows,     "tier"="broad"
+          "retained": DataFrame,      # the three concatenated (disjoint union)
+          "n_strict": int, "n_moderate": int, "n_broad": int, "n_total": int,
+        }
+    """
+    strict_matched, _ = match(car, source_df, STRICT)
+    moderate_matched, _ = match(car, source_df, MODERATE)
+    broad_matched, _ = match(car, source_df, BROAD)
+
+    strict_keys = (set(strict_matched.apply(_row_identity_key, axis=1))
+                   if not strict_matched.empty else set())
+    moderate_only = (moderate_matched[~moderate_matched.apply(_row_identity_key, axis=1).isin(strict_keys)]
+                      if not moderate_matched.empty else moderate_matched)
+    moderate_keys = strict_keys | (set(moderate_only.apply(_row_identity_key, axis=1))
+                                    if not moderate_only.empty else set())
+    broad_only = (broad_matched[~broad_matched.apply(_row_identity_key, axis=1).isin(moderate_keys)]
+                  if not broad_matched.empty else broad_matched)
+
+    strict_tagged = strict_matched.copy()
+    if not strict_tagged.empty:
+        strict_tagged["tier"] = "strict"
+    moderate_tagged = moderate_only.copy()
+    if not moderate_tagged.empty:
+        moderate_tagged["tier"] = "moderate"
+    broad_tagged = broad_only.copy()
+    if not broad_tagged.empty:
+        broad_tagged["tier"] = "broad"
+
+    bands = [b for b in (strict_tagged, moderate_tagged, broad_tagged) if not b.empty]
+    retained = pd.concat(bands, ignore_index=True) if bands else source_df.iloc[0:0].copy()
+
+    return {
+        "strict": strict_tagged,
+        "moderate_only": moderate_tagged,
+        "broad_only": broad_tagged,
+        "retained": retained,
+        "n_strict": len(strict_tagged),
+        "n_moderate": len(moderate_tagged),
+        "n_broad": len(broad_tagged),
+        "n_total": len(strict_tagged) + len(moderate_tagged) + len(broad_tagged),
+    }
 
 
 # --------------------------------------------------------------------------- #
