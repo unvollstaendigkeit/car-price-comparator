@@ -227,10 +227,15 @@ class TestRetrieveResultShape(ProviderTestBase):
         self.assertEqual(status["from_cache"], True)
         self.assertGreaterEqual(status["age_s"], 0.0)
 
-    def test_peek_returns_none_with_no_snapshot(self):
+    def test_peek_still_reports_cache_status_with_no_fallback_snapshot(self):
+        """2026-08-24: peek() no longer returns None just because no
+        collection_runs fallback snapshot exists -- the primary incremental
+        path can still serve real data either way, and peek() never queries
+        per-target to predict that, so it stays unconditionally cache-shaped."""
         provider = mp.MarketCollectorProvider(db_path=self.db_path)  # empty DB, no runs at all
         self.assertIsNone(provider.run)
-        self.assertIsNone(provider.peek("bazos", self._car(), pages=1))
+        status = provider.peek("bazos", self._car(), pages=1)
+        self.assertEqual(status, {"from_cache": True, "age_s": None})
 
     def test_no_network_requests_occur(self):
         self._run("2026-08-10T00:00:00Z", run_scope="full")
@@ -391,6 +396,126 @@ class TestFullInventoryAnalysisIntegration(ProviderTestBase):
         list(analyze_inventory(rows, provider=provider))
         after = http_client.request_count()
         self.assertEqual(before, after)
+
+
+# --------------------------------------------------------------------------- #
+# Incremental pipeline path (2026-08-24) -- discover.py/collect_daily.py's
+# rolling ledger, read with NO collection_runs/resolve_collection_run
+# involved. ProviderTestBase's existing fixtures (_insert_bazos_vehicle /
+# _insert_autobazar) deliberately do NOT set up discovered_listings or
+# parse_mode='sitemap_detail' -- they represent the OLD collect.py shape,
+# which is exactly why every test above still passes unchanged: the new
+# incremental query correctly finds nothing for them and falls through to
+# the existing fallback path. These tests build the INCREMENTAL shape
+# explicitly instead.
+# --------------------------------------------------------------------------- #
+class IncrementalProviderTestBase(ProviderTestBase):
+    def _insert_discovered(self, source, listing_id, disappeared_at=None):
+        self.conn.execute(
+            "INSERT INTO discovered_listings "
+            "(source, listing_id, url, sitemap_lastmod, first_discovered_at, "
+            " last_discovered_at, fields_captured_at, disappeared_at) "
+            "VALUES (?, ?, ?, NULL, '2026-08-24T00:00:00+00:00', "
+            " '2026-08-24T00:00:00+00:00', '2026-08-24T00:00:00+00:00', ?)",
+            (source, listing_id, f"http://x/{listing_id}", disappeared_at),
+        )
+        self.conn.commit()
+
+    def _insert_incremental_bazos(self, listing_id="b1", disappeared_at=None, **overrides):
+        self._insert_bazos_vehicle(listing_id=listing_id, search_query="(sitemap_discovery)", **overrides)
+        self._insert_discovered("bazos", listing_id, disappeared_at=disappeared_at)
+
+    def _insert_incremental_autobazar(self, **overrides):
+        overrides.setdefault("parse_mode", "sitemap_detail")
+        # Real sitemap_detail rows carry search_brand from Autobazar's OWN
+        # advertised-brand field, which spells this test's default car
+        # ("Skoda") WITH a diacritic ("Škoda") -- see market_provider.py's
+        # _INCREMENTAL_BRAND_OVERRIDES docstring. Snapshot/next_data rows
+        # (_insert_autobazar's own default) correctly stay unaccented, since
+        # those come from market-collector's own unaccented search targets.
+        overrides.setdefault("search_brand", "Škoda")
+        self._insert_autobazar(**overrides)
+
+
+class TestIncrementalPathPreferredWhenPresent(IncrementalProviderTestBase):
+    def test_incremental_bazos_used_even_with_no_fallback_snapshot_at_all(self):
+        """No collection_runs row exists anywhere in this DB (provider.run
+        is None) -- the incremental hit alone must still be enough."""
+        self._insert_incremental_bazos(price=10_000)
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        self.assertIsNone(provider.run)
+
+        res = provider.retrieve("bazos", self._car(), pages=1, deadline=None)
+        self.assertFalse(res.df.empty)
+        self.assertEqual(res.err, "")
+        self.assertEqual(res.df.iloc[0]["price"], 10_000)
+        self.assertIsNone(res.age_s)  # no single age for a many-timestamp incremental pool
+
+    def test_incremental_autobazar_used_even_with_no_fallback_snapshot(self):
+        self._insert_incremental_autobazar(price=11_000)
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("autobazar", self._car(), pages=1, deadline=None)
+        self.assertFalse(res.df.empty)
+        self.assertEqual(res.df.iloc[0]["price"], 11_000)
+
+    def test_incremental_preferred_over_fallback_when_both_have_data(self):
+        """Both an old-style snapshot AND fresh incremental data exist for
+        the same target -- the incremental (actively-maintained) result
+        must win, not the older snapshot."""
+        self._run("2026-08-10T00:00:00Z", run_scope="full")
+        self._insert_bazos_vehicle(observed_at="2026-08-10T00:00:00Z", price=99_000)  # old snapshot
+        self._insert_incremental_bazos(price=10_000)  # fresh incremental
+
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("bazos", self._car(), pages=1, deadline=None)
+        self.assertEqual(res.df.iloc[0]["price"], 10_000)  # incremental wins
+
+    def test_falls_back_to_snapshot_when_incremental_empty_for_this_target(self):
+        """Incremental data exists in the DB, but not for THIS brand/model --
+        the fallback snapshot must still be tried and used."""
+        self._insert_incremental_bazos(title="BMW X5 3.0d")
+        self._run("2026-08-10T00:00:00Z", run_scope="full")
+        self._insert_bazos_vehicle(observed_at="2026-08-10T00:00:00Z", price=15_000)  # Skoda Octavia
+
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("bazos", self._car(), pages=1, deadline=None)  # car() is Skoda Octavia
+        self.assertFalse(res.df.empty)
+        self.assertEqual(res.df.iloc[0]["price"], 15_000)  # the fallback row, not the BMW
+
+
+class TestIncrementalDisappearedAtExclusion(IncrementalProviderTestBase):
+    def test_disappeared_bazos_listing_excluded_from_incremental_pool(self):
+        self._insert_incremental_bazos(disappeared_at="2026-08-23T00:00:00+00:00")
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("bazos", self._car(), pages=1, deadline=None)
+        self.assertTrue(res.df.empty)  # vanished -- must not be offered as a comparable
+
+    def test_still_present_bazos_listing_included(self):
+        self._insert_incremental_bazos(disappeared_at=None)
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("bazos", self._car(), pages=1, deadline=None)
+        self.assertFalse(res.df.empty)
+
+
+class TestIncrementalAutobazarParseModeFiltering(IncrementalProviderTestBase):
+    def test_old_search_based_autobazar_rows_excluded_from_incremental_query(self):
+        """A row with the OLD collect_autobazar parse_mode (next_data) must
+        never be picked up by the incremental path, even with no
+        collection_runs snapshot to fall back to -- it should surface via
+        the fallback path instead, exercised in the next test."""
+        self._insert_autobazar(parse_mode="next_data", price=20_000)
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("autobazar", self._car(), pages=1, deadline=None)
+        self.assertTrue(res.df.empty)
+        self.assertEqual(res.err, mp.NO_SNAPSHOT_ERR)  # no fallback snapshot exists either
+
+    def test_old_row_still_reachable_via_fallback_when_a_snapshot_exists(self):
+        self._run("2026-08-10T00:00:00Z", run_scope="full")
+        self._insert_autobazar(observed_at="2026-08-10T00:00:00Z", parse_mode="next_data", price=20_000)
+        provider = mp.MarketCollectorProvider(db_path=self.db_path)
+        res = provider.retrieve("autobazar", self._car(), pages=1, deadline=None)
+        self.assertFalse(res.df.empty)
+        self.assertEqual(res.df.iloc[0]["price"], 20_000)
 
 
 if __name__ == "__main__":

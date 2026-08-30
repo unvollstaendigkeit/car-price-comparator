@@ -159,6 +159,16 @@ _TRANS_RULES = [
     ("Manual", re.compile(r"\b(manual|man\.?|\d\s?g\b|\d-?gear)\b", re.I)),
 ]
 
+# Drivetrain: only a POSITIVE textual signal is trusted (2026-08-28 business
+# sign-off) -- absence of any marker means "unknown", never inferred as FWD by
+# default, since most trims don't state their drivetrain at all and guessing
+# would violate the "never invent a value we cannot parse" principle.
+_DRIVETRAIN_RULES = [
+    ("AWD", re.compile(r"\b(4x4|4motion|quattro|xdrive|x-drive|awd|allrad|4matic|syncro|4wd)\b", re.I)),
+    ("RWD", re.compile(r"\b(rwd|zadn[yý]\s*n[aá]hon|zadok[oó]lka)\b", re.I)),
+    ("FWD", re.compile(r"\b(fwd|2wd|predn[yý]\s*n[aá]hon|predok[oó]lka)\b", re.I)),
+]
+
 
 def _parse_displacement(variant: str) -> Optional[float]:
     m = _DISP_RE.search(variant)
@@ -183,6 +193,13 @@ def _parse_power_kw(variant: str) -> tuple[Optional[int], str]:
 
 def _parse_transmission(variant: str) -> Optional[str]:
     for label, rx in _TRANS_RULES:
+        if rx.search(variant):
+            return label
+    return None
+
+
+def _parse_drivetrain(variant: str) -> Optional[str]:
+    for label, rx in _DRIVETRAIN_RULES:
         if rx.search(variant):
             return label
     return None
@@ -216,6 +233,7 @@ class InventoryCar:
     year: Optional[int]
     power_kw: Optional[int]
     transmission: Optional[str]
+    drivetrain: Optional[str]
     body_type: Optional[str]
     km: Optional[int]
     price: Optional[int]
@@ -257,6 +275,7 @@ def load_inventory(path: str, assumed_currency: str = "EUR") -> pd.DataFrame:
         disp = _parse_displacement(variant) if variant else None
         power, psrc = _parse_power_kw(variant) if variant else (None, "missing")
         trans = _parse_transmission(variant) if variant else None
+        drivetrain = _parse_drivetrain(variant) if variant else None
         engine = _parse_engine_badge(variant, disp) if variant else None
 
         year = int(r["year"]) if pd.notna(r["year"]) else None
@@ -283,6 +302,7 @@ def load_inventory(path: str, assumed_currency: str = "EUR") -> pd.DataFrame:
                 year=year,
                 power_kw=power,
                 transmission=trans,
+                drivetrain=drivetrain,
                 body_type=_cell(r, "body_type"),
                 km=km,
                 price=price,

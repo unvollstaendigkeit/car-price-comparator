@@ -150,6 +150,57 @@ def test_per_source_insufficient_flags_when_only_one_source_short():
 
 
 # --------------------------------------------------------------------------- #
+# 2026-08-25: confidence is tier-driven end-to-end, all the way up to the
+# overall confidence_flag -- not just inside adaptive_estimate(). A single
+# comparable at ANY tier is usable (never "insufficient" on its own); the
+# TIER it was found at sets the overall flag's baseline: strict->HIGH,
+# moderate->MEDIUM, broad->LOW. Only a genuine zero-comparables-anywhere
+# case is INSUFFICIENT. This is what confidence_flag() used to re-derive
+# "usable" independently via a flat n>=MIN_USABLE check, silently
+# overriding a usable single-match result back to "not usable" right after
+# estimate() had already accepted it.
+# --------------------------------------------------------------------------- #
+def test_single_strict_comparable_source_gives_high_confidence_end_to_end():
+    car = _car()  # exact spec match: year, transmission, variant_engine, etc.
+    ab_df = _rows(1, "autobazar", [20_000])  # 1 exact-match listing -> STRICT
+    row, ab_est, bz_est, _, _ = evaluate_car(car, ab_df, _empty(), "", "")
+    assert ab_est["tier_used"] == "strict"
+    assert ab_est["comparable_count"] == 1
+    assert row["ab_insufficient"] is False
+    assert row["confidence_flag"] == "HIGH"
+
+
+def test_single_moderate_comparable_source_gives_medium_confidence_end_to_end():
+    # power +15kW rejects STRICT (+/-10kW) only; the 1 listing reaches
+    # MODERATE (+/-20kW) and is selected there directly -> MEDIUM baseline,
+    # not INSUFFICIENT. (2026-08-28: MODERATE now also requires the SAME
+    # transmission/variant as STRICT, so a transmission-only mismatch no
+    # longer isolates "STRICT-only" -- power still does.)
+    car = _car()
+    ab_df = _rows(1, "autobazar", [20_000], power_kw=125)
+    row, ab_est, bz_est, _, _ = evaluate_car(car, ab_df, _empty(), "", "")
+    assert ab_est["tier_used"] == "moderate"
+    assert ab_est["comparable_count"] == 1
+    assert row["ab_insufficient"] is False
+    assert row["confidence_flag"] == "MEDIUM"
+
+
+def test_single_broad_comparable_source_gives_low_confidence_end_to_end():
+    car = _car()  # car.year == 2020
+    # year 2023, not 2017: the car is a Skoda Octavia (Mk4 as of 2020 in the
+    # generation-awareness table added 2026-08-28); 2017 falls in Mk3 and
+    # would hard-block via rule_generation regardless of tier -- correct
+    # real-world behavior, but not what this test exercises (pure
+    # year-tolerance escalation). 2023 stays within the same Mk4 range.
+    ab_df = _rows(1, "autobazar", [20_000], year=2023, transmission="Automatic")  # only BROAD
+    row, ab_est, bz_est, _, _ = evaluate_car(car, ab_df, _empty(), "", "")
+    assert ab_est["tier_used"] == "broad"
+    assert ab_est["comparable_count"] == 1
+    assert row["ab_insufficient"] is False
+    assert row["confidence_flag"] == "LOW"
+
+
+# --------------------------------------------------------------------------- #
 # Runner (pytest-free fallback, matching this project's existing test files)
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":

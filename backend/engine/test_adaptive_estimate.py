@@ -4,9 +4,13 @@ the ACTUAL production backend/engine/phase6_validate.py (no separate/legacy
 copy involved -- this file lives next to it and imports it directly).
 
 Covers the STRICT -> MODERATE -> BROAD escalation documented at
-adaptive_estimate()'s call site: the tightest tier reaching MIN_USABLE (4)
-comparables is chosen; if none do, BROAD is used anyway and flagged
-insufficient. No network access: all market data is synthetic.
+adaptive_estimate()'s call site: the tightest tier reaching ITS OWN
+usability floor is chosen -- 1 for STRICT, MIN_USABLE (4) for MODERATE/
+BROAD (2026-08-25: STRICT's floor was previously also MIN_USABLE, so a
+single precise STRICT match was passed over for a larger but less precise
+MODERATE/BROAD pool, or reported as "insufficient" outright). If no tier
+reaches its floor, BROAD is used anyway and flagged insufficient. No
+network access: all market data is synthetic.
 
 Run: python test_adaptive_estimate.py
   or: python -m pytest test_adaptive_estimate.py -q
@@ -70,12 +74,16 @@ def test_strict_tier_selected_when_it_reaches_min_usable():
 
 
 # --------------------------------------------------------------------------- #
-# STRICT insufficient (fails on transmission, which only STRICT requires) ->
-# MODERATE selected
+# STRICT insufficient (fails on power, +/-15kW: outside STRICT's +/-10kW but
+# within MODERATE's +/-20kW) -> MODERATE selected.
+# (2026-08-28 business sign-off tightened MODERATE to also require the SAME
+# transmission/variant as STRICT -- only BROAD drops those -- so a
+# transmission-only mismatch no longer reaches MODERATE; power is the
+# differentiator that still isolates "STRICT-only" the way this test needs.)
 # --------------------------------------------------------------------------- #
 def test_moderate_selected_when_strict_insufficient():
-    car = _car()  # car.transmission == "Manual"
-    df = _rows(4, transmission="Automatic")  # mismatched transmission -> STRICT rejects all
+    car = _car()  # car.power_kw == 110
+    df = _rows(4, power_kw=125)  # +15kW -> fails STRICT(+/-10), passes MODERATE(+/-20)
     est, matched = adaptive_estimate(car, df)
     assert est["tier_used"] == "moderate"
     assert est["comparable_count"] == 4
@@ -86,11 +94,16 @@ def test_moderate_selected_when_strict_insufficient():
 
 # --------------------------------------------------------------------------- #
 # STRICT and MODERATE both insufficient (year 3 off: outside both's tolerance,
-# 1 and 2, but within BROAD's tolerance of 3) -> BROAD selected
+# 1 and 2, but within BROAD's tolerance of 3) -> BROAD selected.
+# Uses 2023, not 2017: the car is a Skoda Octavia (year 2020, Mk4 in the
+# generation-awareness table added 2026-08-28), and 2017 falls in Mk3 --
+# rule_generation would hard-block that pairing regardless of tier, which is
+# correct real-world behavior but not what THIS test is exercising (pure
+# year-tolerance escalation). 2023 stays within the same Mk4 range.
 # --------------------------------------------------------------------------- #
 def test_broad_selected_when_moderate_insufficient():
     car = _car()  # car.year == 2020
-    df = _rows(4, year=2017)  # |2020-2017| = 3: fails STRICT(tol1)/MODERATE(tol2), passes BROAD(tol3)
+    df = _rows(4, year=2023)  # |2020-2023| = 3: fails STRICT(tol1)/MODERATE(tol2), passes BROAD(tol3)
     est, matched = adaptive_estimate(car, df)
     assert est["tier_used"] == "broad"
     assert est["comparable_count"] == 4
@@ -100,17 +113,29 @@ def test_broad_selected_when_moderate_insufficient():
 
 
 # --------------------------------------------------------------------------- #
-# Even BROAD stays under MIN_USABLE -> falls back to BROAD, flagged insufficient
+# 2026-08-25: MIN_USABLE no longer gates SELECTION at any tier -- a match at
+# BROAD alone is now reported as usable (comparable_count > 0), not flagged
+# insufficient just for being under the old count floor. Only a truly empty
+# pool (see test_empty_pool_is_insufficient_broad) is insufficient. This
+# replaces the old "BROAD stays under MIN_USABLE -> insufficient" case,
+# which no longer exists as a concept.
 # --------------------------------------------------------------------------- #
-def test_broad_still_insufficient_is_flagged():
-    car = _car()
-    df = _rows(2)  # only 2 listings total, well under MIN_USABLE=4, at every tier
+def test_broad_only_match_is_now_sufficient():
+    car = _car()  # car.year == 2020, car.transmission == "Manual"
+    # transmission mismatch rejects STRICT AND MODERATE (2026-08-28: MODERATE
+    # now also requires transmission/variant); year off by 3 -- kept within
+    # the same generation bucket (2023, not 2017 -- see
+    # test_broad_selected_when_moderate_insufficient's comment) -- rejects
+    # MODERATE(tol 2) too, leaving only BROAD (tol 3) -- just 2 listings,
+    # well under the OLD MIN_USABLE=4, but that no longer matters for
+    # selection or for insufficient_sample.
+    df = _rows(2, year=2023, transmission="Automatic")
     est, matched = adaptive_estimate(car, df)
-    assert MIN_USABLE == 4  # pin the constant this test's arithmetic depends on
+    assert MIN_USABLE == 4  # pin the constant confidence_flag() now uses instead
     assert est["tier_used"] == "broad"
     assert est["comparable_count"] == 2
-    assert est["insufficient_sample"] is True
-    assert est["tier_counts"] == "str:2/mod:2/bro:2"
+    assert est["insufficient_sample"] is False
+    assert est["tier_counts"] == "str:0/mod:0/bro:2"
     assert len(matched) == 2
 
 
@@ -122,6 +147,54 @@ def test_empty_pool_is_insufficient_broad():
     assert est["comparable_count"] == 0
     assert est["insufficient_sample"] is True
     assert matched.empty
+
+
+# --------------------------------------------------------------------------- #
+# 2026-08-25: a lone STRICT comparable is trusted on its own -- unlike
+# MODERATE/BROAD, it doesn't need MIN_USABLE to be reported as usable.
+# --------------------------------------------------------------------------- #
+def test_single_strict_comparable_is_sufficient():
+    car = _car()
+    df = _rows(1)  # exact spec match on every field -> the 1 listing passes STRICT
+    est, matched = adaptive_estimate(car, df)
+    assert est["tier_used"] == "strict"
+    assert est["comparable_count"] == 1
+    assert est["insufficient_sample"] is False
+    assert est["tier_counts"] == "str:1/mod:1/bro:1"
+    assert len(matched) == 1
+
+
+def test_few_strict_comparables_below_min_usable_still_sufficient():
+    car = _car()
+    df = _rows(3)  # 3 exact matches: below MIN_USABLE=4, still trusted at STRICT
+    est, matched = adaptive_estimate(car, df)
+    assert est["tier_used"] == "strict"
+    assert est["comparable_count"] == 3
+    assert est["insufficient_sample"] is False
+
+
+def test_single_moderate_comparable_is_selected_and_sufficient():
+    # power +15kW rejects STRICT (+/-10kW) only; the 1 listing reaches
+    # MODERATE (+/-20kW) and is now selected there directly (2026-08-25:
+    # MODERATE no longer needs MIN_USABLE=4 to be chosen over falling
+    # through to BROAD). See test_moderate_selected_when_strict_insufficient
+    # for why power, not transmission, is the differentiator here.
+    car = _car()
+    df = _rows(1, power_kw=125)
+    est, matched = adaptive_estimate(car, df)
+    assert est["tier_used"] == "moderate"
+    assert est["tier_counts"] == "str:0/mod:1/bro:1"
+    assert est["comparable_count"] == 1
+    assert est["insufficient_sample"] is False
+
+
+def test_single_broad_comparable_is_selected_and_sufficient():
+    car = _car()  # car.year == 2020
+    df = _rows(1, year=2023, transmission="Automatic")  # only reaches BROAD
+    est, matched = adaptive_estimate(car, df)
+    assert est["tier_used"] == "broad"
+    assert est["comparable_count"] == 1
+    assert est["insufficient_sample"] is False
 
 
 # --------------------------------------------------------------------------- #

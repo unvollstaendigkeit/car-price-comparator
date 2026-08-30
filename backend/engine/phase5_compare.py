@@ -78,50 +78,78 @@ class RuleSet:
     # its year is unknown. Without it, year-less part/older listings slip into the
     # strict pool purely because "unknown never fails" and corrupt the median.
     require_known_year: bool = False
+    # Drivetrain (FWD/AWD/RWD) must match when BOTH sides have a detected value
+    # (2026-08-28, business sign-off: "if fwd vs awd not a match, it can still be
+    # moderate or broad" -- i.e. only STRICT blocks on a known mismatch).
+    require_same_drivetrain: bool = False
 
     def describe(self) -> str:
+        km_desc = f"km +/-{self.km_floor:,} (flat)" if self.km_pct == 0 else (
+            f"km +/-{int(self.km_pct*100)}% (floor +/-{self.km_floor:,})"
+        )
         parts = [
             f"year +/-{self.year_tol}" + (" (must be known)" if self.require_known_year else ""),
-            f"km +/-{int(self.km_pct*100)}% (floor +/-{self.km_floor:,})",
+            km_desc,
             ("variant must match" if self.require_same_variant else "any engine of model"),
             (f"power +/-{self.power_tol_kw}kW (both-known)" if self.power_tol_kw is not None else "power ignored"),
             ("transmission must match (both-known)" if self.require_same_transmission else "transmission ignored"),
+            ("drivetrain must match (both-known)" if self.require_same_drivetrain else "drivetrain ignored"),
         ]
         return "; ".join(parts)
 
 
+# km tolerance (2026-08-26 change): FLAT absolute bands, not a percentage of the
+# submitted car's own mileage. The previous max(km_pct, km_floor) formula let a
+# high-mileage car's window balloon far past what "strict" should mean -- e.g. a
+# 250,000 km car got a +/-75,000 km STRICT window under the old 30%-of-km rule,
+# which is what actually produced the misleadingly tight-looking single-comp
+# matches audited on 2026-08-26 (Suzuki Vitara/Skoda Octavia). km_pct is kept
+# on the dataclass (set to 0.0 on every tier below) rather than removed, so
+# rule_km's max(car.km * km_pct, km_floor) formula needs no code change --
+# with km_pct=0 it always reduces to exactly km_floor, for every car regardless
+# of its own mileage.
 STRICT = RuleSet(
     name="strict",
     year_tol=1,
-    km_pct=0.30,
+    km_pct=0.0,
     km_floor=20_000,
     power_tol_kw=10,
     require_same_variant=True,
     require_same_transmission=True,
     require_known_year=True,
+    require_same_drivetrain=True,
 )
 
-# MODERATE sits between STRICT and BROAD. Its tolerances are data-tuned: a
-# diagnostic over the real retrieved pools showed the STRICT blockers (in order)
-# are km, year, then the hard transmission requirement - NOT engine/variant. So
-# MODERATE widens year/km, drops the transmission requirement, and keeps a
-# meaningful power band. It still requires a KNOWN year (no year-less shells).
+# MODERATE sits between STRICT and BROAD. Its non-km tolerances are data-tuned.
+# 2026-08-28 business sign-off tightened MODERATE further: engine/variant and
+# transmission must now BOTH still match at MODERATE -- only BROAD drops them.
+# ("1.6 TDI vs 2.0 TDI -> broad is correct" implies MODERATE must reject that
+# pairing, i.e. require_same_variant=True here; "transmission mismatch can be
+# broad, but in strict and moderate transmission has to be a fit" is explicit.)
+# MODERATE widens year/km and keeps a meaningful power band. It still requires
+# a KNOWN year (no year-less shells).
 MODERATE = RuleSet(
     name="moderate",
     year_tol=2,
-    km_pct=0.40,
-    km_floor=25_000,
+    km_pct=0.0,
+    km_floor=40_000,
     power_tol_kw=20,
-    require_same_variant=False,
-    require_same_transmission=False,
+    require_same_variant=True,
+    require_same_transmission=True,
     require_known_year=True,
 )
 
+# BROAD is the only tier that drops engine/variant and transmission entirely --
+# a different displacement (e.g. 1.6 TDI vs 2.0 TDI) or gearbox is tolerated
+# here, never at STRICT/MODERATE (2026-08-28 business sign-off). km_floor
+# widened 60,000 -> 100,000 the same day, after a real near-miss case (a
+# genuine PHEV comparable falling just 1,808km outside the old 60k band)
+# -- STRICT (20,000) and MODERATE (40,000) explicitly left unchanged.
 BROAD = RuleSet(
     name="broad",
     year_tol=3,
-    km_pct=0.60,
-    km_floor=40_000,
+    km_pct=0.0,
+    km_floor=100_000,
     power_tol_kw=30,
     require_same_variant=False,
     require_same_transmission=False,
@@ -178,6 +206,28 @@ def normalize_transmission(text) -> Optional[str]:
     return None
 
 
+# Drivetrain: only a POSITIVE textual signal is trusted -- absence of any
+# marker means "unknown", never inferred as FWD by default (2026-08-28
+# business sign-off; mirrors inventory_loader._parse_drivetrain).
+_DRIVETRAIN_RULES = [
+    ("AWD", re.compile(r"\b(4x4|4motion|quattro|xdrive|x-drive|awd|allrad|4matic|syncro|4wd)\b", re.I)),
+    ("RWD", re.compile(r"\b(rwd|zadn[yý]\s*n[aá]hon|zadok[oó]lka)\b", re.I)),
+    ("FWD", re.compile(r"\b(fwd|2wd|predn[yý]\s*n[aá]hon|predok[oó]lka)\b", re.I)),
+]
+
+
+def normalize_drivetrain(text) -> Optional[str]:
+    """'... 2.0 TDI Quattro ...' -> 'AWD'. Returns None if no drivetrain token."""
+    text = _clean(text)
+    if not text:
+        return None
+    t = str(text)
+    for label, rx in _DRIVETRAIN_RULES:
+        if rx.search(t):
+            return label
+    return None
+
+
 def normalize_fuel(text) -> Optional[str]:
     """
     Canonicalize a fuel string from either source or the inventory into one of:
@@ -214,6 +264,53 @@ def normalize_fuel(text) -> Optional[str]:
     if "cng" in t:
         return "CNG"
     return str(text).strip().title()
+
+
+# Fuel readings specific enough that a title keyword must never override
+# them (see normalize_fuel_with_title_fallback's LPG/CNG branch).
+_FUEL_ALREADY_SPECIFIC = {"Diesel", "Hybrid", "PHEV", "Electric", "LPG", "CNG"}
+_LPG_TITLE_RE = re.compile(r"\blpg\b|\bplyn\w*\b", re.I)
+_CNG_TITLE_RE = re.compile(r"\bcng\b", re.I)
+
+
+def normalize_fuel_with_title_fallback(raw_fuel, title) -> Optional[str]:
+    """
+    normalize_fuel(raw_fuel), upgraded to PHEV when the structured field
+    reads plain "Hybrid" but the listing's own TITLE explicitly says
+    plug-in. Confirmed 2026-08-28 as a real, systemic Autobazar data gap,
+    not a one-off seller mistake: the site's structured fuel dropdown DOES
+    support "Plug-in hybrid" as its own value, but a real, sizeable set of
+    sellers pick the generic "Hybrid (Elektrina - benzín)" bucket anyway
+    even when their own title says "Plug-in Hybrid"/"PHEV" -- observed
+    across at least 5 different brands (Hyundai Ioniq, Opel Astra GSe, Kia
+    XCeed, Citroën C5 Aircross, Volvo V60, Toyota Prius), 112+ affected
+    rows in the captured dataset at the time this was added. Deliberately
+    one-directional (only upgrades Hybrid -> PHEV, never downgrades or
+    invents a fuel type from nothing) -- a title that says nothing about
+    plug-in status leaves the structured field's own reading untouched.
+    """
+    fuel = normalize_fuel(raw_fuel)
+    t = _clean(title)
+    tl = str(t).lower() if t else ""
+
+    if fuel == "Hybrid" and t and ("plug" in tl or "phev" in tl):
+        return "PHEV"
+
+    # LPG/CNG retrofit conversions: the structured fuel field almost always
+    # just reports the car's base engine ("Petrol"/undefined), since LPG/CNG
+    # is a bi-fuel ADD-ON (near-universally onto a petrol engine), not a
+    # separate factory powertrain the way PHEV is -- but the title routinely
+    # calls it out ("1.6 LPG", "Benzín+Plyn"). 2026-08-28 audit: 53 Autobazar
+    # + 97 Bazoš rows affected. Never overrides an already-specific reading
+    # (Diesel/Hybrid/PHEV/Electric/LPG/CNG) -- only upgrades a bare/generic
+    # base-engine reading, same one-directional principle as the PHEV case.
+    if fuel not in _FUEL_ALREADY_SPECIFIC and t:
+        if _LPG_TITLE_RE.search(tl):
+            return "LPG"
+        if _CNG_TITLE_RE.search(tl):
+            return "CNG"
+
+    return fuel
 
 
 def _listing_id_from_url(url) -> Optional[str]:

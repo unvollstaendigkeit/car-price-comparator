@@ -42,7 +42,8 @@ import bazos_scraper as bz
 from inventory_loader import load_inventory
 from phase5_compare import (
     RuleSet, STRICT, MODERATE, BROAD,
-    normalize_engine, normalize_fuel, normalize_transmission,
+    normalize_engine, normalize_fuel_with_title_fallback,
+    normalize_transmission, normalize_drivetrain,
     _int, _clean, _listing_id_from_url, price_stats,
 )
 
@@ -191,6 +192,10 @@ class InvCar:
     body_type: Optional[str]
     variant_raw: Optional[str]
     power_source: str
+    # Optional + defaulted (unlike every field above) so existing call sites
+    # (tests, other callers) that predate this field keep working unchanged --
+    # drivetrain is legitimately unknown for the vast majority of listings.
+    drivetrain: Optional[str] = None
 
     def label(self) -> str:
         return (f"{self.brand} {self.model} {self.variant_raw or ''}".strip()
@@ -265,6 +270,7 @@ def to_invcar(row: pd.Series) -> InvCar:
         price=_int(row.get("price")),
         power_kw=_int(row.get("power_kw")),
         transmission=_clean(row.get("transmission")),
+        drivetrain=_clean(row.get("drivetrain")),
         body_type=_clean(row.get("body_type")),
         variant_raw=_clean(row.get("variant_raw")),
         power_source=str(row.get("power_source") or ""),
@@ -283,7 +289,7 @@ def _norm_market_row(source: str, raw: dict) -> dict:
             "listing_id": _listing_id_from_url(raw.get("url")),
             "title": title,
             "variant_engine": normalize_engine(title),
-            "fuel": normalize_fuel(raw.get("fuel")),
+            "fuel": normalize_fuel_with_title_fallback(raw.get("fuel"), title),
             "year": _int(raw.get("year")),
             "km": _int(raw.get("km")),
             "power_kw": _int(raw.get("power")),
@@ -299,7 +305,7 @@ def _norm_market_row(source: str, raw: dict) -> dict:
         "listing_id": _clean(raw.get("listing_id")),
         "title": title,
         "variant_engine": normalize_engine(raw.get("engine")) or normalize_engine(title),
-        "fuel": normalize_fuel(raw.get("fuel")),
+        "fuel": normalize_fuel_with_title_fallback(raw.get("fuel"), title),
         "year": _int(raw.get("year")),
         "km": _int(raw.get("km")),
         "power_kw": _int(raw.get("power")),
@@ -537,22 +543,62 @@ def rule_brand(car: InvCar, row) -> str:
 # "Passat CC" ad's title does contain "Passat") or the title's own model
 # candidate would otherwise resolve as a match (e.g. "Proace Verso" contains
 # "Verso"). Each entry is a genuinely different product line, not a trim/badge
-# of the same car. SUFFIXES matches "{model} {marker}" (confirmed by direct
-# inspection during the 2026-08-17 valuation audit: Passat CC/Alltrack
-# contaminating a Passat pool; Golf Sportsvan is its own market-collector
-# collection target). PREFIXES matches "{marker} {model}" -- needed because a
-# prefix-style distinct product (e.g. Toyota "Proace Verso" contaminating a
-# "Verso" pool, confirmed during the 2026-08-17 matching-quality audit) is not
-# expressible as a suffix pattern. Deliberately a short, evidenced list, not a
-# general model-line database -- every other (brand, model) pair keeps the
-# prior soft behavior unchanged.
+# of the same car. SUFFIXES matches "{model} {marker}" (space-separated,
+# confirmed 2026-08-17: Passat CC/Alltrack contaminating a Passat pool; Golf
+# Sportsvan is its own market-collector collection target) OR "{model}{marker}"
+# FUSED with no space (added 2026-08-28 -- Autobazar's own taxonomy names
+# "XCeed" and "CLA"/"CLE"/"CLS" this way, no space at all, so the
+# space-separated form alone would silently miss them). PREFIXES matches
+# "{marker} {model}" (space) OR "{marker}{model}" (fused) the same way --
+# needed because a prefix-style distinct product (e.g. Toyota "Proace Verso"
+# contaminating a "Verso" pool, confirmed 2026-08-17) is not expressible as a
+# suffix pattern. Deliberately a short, evidenced list (largely from
+# audit_model_line_contamination.py's 2026-08-28 sweep of every Autobazar
+# (brand, model) pair against every other), not a general model-line
+# database -- every other (brand, model) pair keeps the prior soft behavior
+# unchanged.
 _DISTINCT_MODEL_LINE_SUFFIXES = {
     ("volkswagen", "passat"): ("cc", "alltrack"),
     ("volkswagen", "golf"): ("sportsvan",),
+    # Ioniq 5 / Ioniq 6 are Hyundai's dedicated E-GMP electric platform (2021+
+    # / 2022+), a completely different vehicle from the original Ioniq
+    # hatchback (2016-2022, ICE/hybrid/PHEV/BEV) -- confirmed live 2026-08-28:
+    # a "Hyundai Ioniq 5" listing (fuel unknown, not rejected) passed BROAD
+    # against a submitted Ioniq PHEV purely because "Ioniq" is a substring of
+    # "Ioniq 5".
+    ("hyundai", "ioniq"): ("5", "6"),
+    # Mach-E is Ford's fully-electric SUV -- shares the Mustang nameplate for
+    # marketing only, completely different platform/powertrain/body from the
+    # combustion coupe.
+    ("ford", "mustang"): ("mach-e",),
+    # C4 Cactus was marketed and priced as its own distinct nameplate (quirky
+    # SUV-styled hatchback), not a C4 trim/body-style.
+    ("citroen", "c4"): ("cactus",),
+    # CL (large luxury coupe) vs CLA/CLE/CLS (compact coupe/sedan, coupe
+    # replacing C/E-Class coupes, 4-door coupe respectively) -- three
+    # genuinely separate Mercedes model lines, all fused (no space) onto the
+    # bare "CL" substring.
+    ("mercedes-benz", "cl"): ("a", "e", "s"),
 }
 _DISTINCT_MODEL_LINE_PREFIXES = {
-    ("toyota", "verso"): ("proace",),
+    ("toyota", "verso"): ("proace", "corolla"),
+    # XCeed is a genuinely distinct crossover; "X" is fused onto "Ceed" as a
+    # PREFIX with no space ("XCeed"), not a suffix.
+    ("kia", "ceed"): ("x",),
 }
+
+
+def _model_line_excluded(alias: str, model: str, t: str) -> bool:
+    """True if `t` (a lowercased title) matches a distinct-model-line
+    exclusion for (alias, model) -- spaced OR fused form, see the tables'
+    own docstring above."""
+    for suffix in _DISTINCT_MODEL_LINE_SUFFIXES.get((alias, model), ()):
+        if f"{model} {suffix}" in t or f"{model}{suffix}" in t:
+            return True
+    for prefix in _DISTINCT_MODEL_LINE_PREFIXES.get((alias, model), ()):
+        if f"{prefix} {model}" in t or f"{prefix}{model}" in t:
+            return True
+    return False
 
 
 def rule_model_soft(car: InvCar, row) -> str:
@@ -568,12 +614,8 @@ def rule_model_soft(car: InvCar, row) -> str:
     # exclusion would silently never fire for it.
     brand_aliases = _BRAND_ALIASES.get(car.brand.lower(), {car.brand.lower()})
     for alias in brand_aliases:
-        for suffix in _DISTINCT_MODEL_LINE_SUFFIXES.get((alias, model), ()):
-            if f"{model} {suffix}" in t:
-                return MISMATCH
-        for prefix in _DISTINCT_MODEL_LINE_PREFIXES.get((alias, model), ()):
-            if f"{prefix} {model}" in t:
-                return MISMATCH
+        if _model_line_excluded(alias, model, t):
+            return MISMATCH
 
     # Locale-aware presence check: the model must be represented by the
     # searched model string itself OR one of its known locale/format variants
@@ -594,6 +636,101 @@ def rule_model_soft(car: InvCar, row) -> str:
     # 2026-08-17 matching-quality audit). Previously this fell through as
     # UNKNOWN and was silently admitted; it is now a hard reject.
     return MISMATCH
+
+
+# --------------------------------------------------------------------------- #
+# Generation awareness (2026-08-28 business sign-off: "would you ever compare
+# two cars from different generations? NO" -- a hard gate enforced at EVERY
+# tier, same as brand/model). Deliberately a small, evidenced table of known
+# generation year-boundaries for models actually seen in real inventory data,
+# NOT a general database: a (brand, model) pair absent from this table never
+# blocks a match (evidence over guessing -- missing a rare cross-generation
+# contamination is far safer than falsely rejecting a real comparable for a
+# model we have no boundary data for). Boundaries are approximate model-year
+# splits (exact production-start dates vary a bit by market); extend/correct
+# as needed. Open-ended on the high side (2035) so a currently-in-production
+# generation keeps matching future model years without upkeep.
+_GEN_BRAND_CANON = {
+    "vw": "volkswagen", "volkswagen": "volkswagen",
+    "mercedes": "mercedes-benz", "mercedes-benz": "mercedes-benz",
+    "merc": "mercedes-benz", "benz": "mercedes-benz",
+    "skoda": "skoda", "škoda": "skoda",
+    "bmw": "bmw",
+    "audi": "audi",
+    "ford": "ford",
+    "toyota": "toyota",
+    "nissan": "nissan",
+    "opel": "opel", "ope": "opel",  # 'Ope' is a real-world typo seen in dealer data
+    "kia": "kia",
+    "mazda": "mazda",
+    "hyundai": "hyundai",
+    "seat": "seat",
+}
+
+_GENERATION_BOUNDARIES: dict[tuple[str, str], list[tuple[int, int, str]]] = {
+    ("skoda", "octavia"): [(2004, 2012, "2"), (2013, 2019, "3"), (2020, 2035, "4")],
+    ("skoda", "superb"): [(2008, 2014, "2"), (2015, 2022, "3"), (2023, 2035, "4")],
+    ("skoda", "fabia"): [(2007, 2013, "2"), (2014, 2020, "3"), (2021, 2035, "4")],
+    ("skoda", "kodiaq"): [(2016, 2022, "1"), (2023, 2035, "2")],
+    ("skoda", "karoq"): [(2017, 2035, "1")],
+    ("volkswagen", "golf"): [(2008, 2011, "6"), (2012, 2018, "7"), (2019, 2035, "8")],
+    ("volkswagen", "passat"): [(2010, 2013, "b7"), (2014, 2022, "b8"), (2023, 2035, "b9")],
+    ("volkswagen", "tiguan"): [(2007, 2015, "1"), (2016, 2023, "2"), (2024, 2035, "3")],
+    ("volkswagen", "touran"): [(2003, 2009, "1"), (2010, 2014, "2"), (2015, 2035, "3")],
+    ("volkswagen", "polo"): [(2009, 2016, "5"), (2017, 2035, "6")],
+    ("volkswagen", "t-cross"): [(2018, 2035, "1")],
+    ("bmw", "3 series"): [(2011, 2018, "f30"), (2019, 2035, "g20")],
+    ("bmw", "5 series"): [(2009, 2016, "f10"), (2017, 2022, "g30"), (2023, 2035, "g60")],
+    ("audi", "a3"): [(2012, 2019, "8v"), (2020, 2035, "8y")],
+    ("audi", "a4"): [(2007, 2014, "b8"), (2015, 2035, "b9")],
+    ("audi", "q5"): [(2008, 2016, "8r"), (2017, 2035, "fy")],
+    ("mercedes-benz", "c-class"): [(2007, 2013, "w204"), (2014, 2020, "w205"), (2021, 2035, "w206")],
+    ("ford", "focus"): [(2010, 2017, "3"), (2018, 2035, "4")],
+    ("ford", "fiesta"): [(2008, 2016, "7"), (2017, 2035, "8")],
+    ("toyota", "yaris"): [(2011, 2019, "3"), (2020, 2035, "4")],
+    ("toyota", "corolla"): [(2013, 2018, "e17x"), (2019, 2035, "e210")],
+    ("nissan", "qashqai"): [(2007, 2013, "j10"), (2014, 2020, "j11"), (2021, 2035, "j12")],
+    ("opel", "astra"): [(2015, 2020, "k"), (2021, 2035, "l")],
+    ("opel", "grandland x"): [(2017, 2023, "1"), (2024, 2035, "2")],
+    ("kia", "ceed"): [(2012, 2017, "jd"), (2018, 2035, "cd")],
+    ("mazda", "cx-5"): [(2012, 2016, "ke"), (2017, 2035, "kf")],
+    ("hyundai", "tucson"): [(2015, 2019, "tl"), (2020, 2035, "nx4")],
+    ("seat", "ibiza"): [(2008, 2016, "4"), (2017, 2035, "5")],
+    ("seat", "leon"): [(2012, 2019, "3"), (2020, 2035, "4")],
+}
+
+
+def _generation_for(brand: Optional[str], model: Optional[str], year: Optional[int]) -> Optional[str]:
+    if year is None:
+        return None
+    brand_key = _GEN_BRAND_CANON.get((brand or "").strip().lower())
+    if brand_key is None:
+        return None
+    ranges = _GENERATION_BOUNDARIES.get((brand_key, (model or "").strip().lower()))
+    if not ranges:
+        return None
+    for lo, hi, label in ranges:
+        if lo <= year <= hi:
+            return label
+    return None  # year falls outside every known range for this model -> no assertion
+
+
+def rule_generation(car: InvCar, row) -> str:
+    """Hard-blocks a cross-generation match. Only fires when we have boundary
+    data for this (brand, model) AND both years resolve to a known generation
+    -- otherwise NA/UNKNOWN, never a false reject for an uncovered model."""
+    if car.year is None:
+        return NA
+    car_gen = _generation_for(car.brand, car.model, car.year)
+    if car_gen is None:
+        return NA
+    row_year = _int(row["year"])
+    if row_year is None:
+        return UNKNOWN
+    row_gen = _generation_for(car.brand, car.model, row_year)
+    if row_gen is None:
+        return UNKNOWN
+    return MATCH if row_gen == car_gen else MISMATCH
 
 
 def rule_fuel(car: InvCar, row) -> str:
@@ -652,6 +789,27 @@ def rule_transmission(car: InvCar, row, require: bool) -> str:
     if val is None:
         return UNKNOWN
     return MATCH if str(val).lower() == car.transmission.lower() else MISMATCH
+
+
+def rule_drivetrain(car: InvCar, row, require: bool) -> str:
+    """
+    Only blocks when BOTH sides have a POSITIVELY detected drivetrain (never
+    inferred from absence -- see normalize_drivetrain's own docstring).
+
+    Reads from `row["title"]` rather than a precomputed "drivetrain" column:
+    MarketCollectorProvider's bridge (the current default market data source,
+    a SEPARATE sibling project) returns DataFrames with EXACTLY Carval's
+    DISPLAY_FIELDS columns, which do not include "drivetrain" -- keying off
+    "title" (which IS in DISPLAY_FIELDS) keeps this rule working identically
+    across every provider without requiring a cross-repo schema change.
+    """
+    if not require or not car.drivetrain:
+        return NA
+    title = _clean(row["title"])
+    val = normalize_drivetrain(title) if title else None
+    if val is None:
+        return UNKNOWN
+    return MATCH if val.lower() == car.drivetrain.lower() else MISMATCH
 
 
 # Canonical body-style classes. Keys are lowercased raw values observed in
@@ -717,15 +875,24 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
     outcomes = {
         "brand": rule_brand(car, row),
         "model": rule_model_soft(car, row),
+        "generation": rule_generation(car, row),
         "fuel": rule_fuel(car, row),
         "variant": rule_variant(car, row, rules.require_same_variant),
         "year": rule_year(car, row, rules.year_tol, rules.require_known_year),
         "km": rule_km(car, row, rules.km_pct, rules.km_floor),
         "power": rule_power(car, row, rules.power_tol_kw),
         "transmission": rule_transmission(car, row, rules.require_same_transmission),
+        "drivetrain": rule_drivetrain(car, row, rules.require_same_drivetrain),
+        # body_type is informational only (2026-08-28 business sign-off: "it
+        # does not matter as much... it can be even strict [i.e. never a
+        # reject]"; model is the field that actually gates comparability) --
+        # computed and reported for transparency but deliberately excluded
+        # from the blocking set below.
         "body_type": rule_body_type(car, row),
     }
-    passed = not any(v == MISMATCH for v in outcomes.values())
+    passed = not any(
+        v == MISMATCH for f, v in outcomes.items() if f != "body_type"
+    )
     return passed, outcomes
 
 
@@ -745,6 +912,21 @@ _PARTS_TITLE_RE = re.compile(
     re.I,
 )
 
+# Auction listings and lease-takeover offers (2026-08-28 business sign-off:
+# both are a hard reject -- "auction is a reject. leasing takeover a reject.")
+# The leasing pattern is confirmed against a real title seen in production
+# scraping: "odstupim-leasing-na-hyundai-santa-fe-4x4..." (SK "odstúpim
+# leasing" = "I'm giving up my lease").
+_REJECT_TITLE_RE = re.compile(
+    r"\b("
+    r"aukci[aeu]|draž(?:ba|obn[yý])|auction|"                    # auction
+    r"odst[uú]pim?\s+leasing|odst[uú]penie\s+od\s+leasingu|"     # leasing takeover
+    r"prevod\s+leasingu|prevzatie\s+leasingu|postupenie\s+leasingu|"
+    r"leasing\s+takeover"
+    r")\b",
+    re.I,
+)
+
 
 def qualifies_as_vehicle(row) -> bool:
     """
@@ -756,7 +938,9 @@ def qualifies_as_vehicle(row) -> bool:
     fails) - and they wreck the median. A real listing must:
       * have a plausible price (>= VEHICLE_PRICE_FLOOR),
       * expose at least one vehicle attribute (year OR mileage), and
-      * NOT be an obvious parts/for-scrap ad by its title.
+      * NOT be an obvious parts/for-scrap ad, auction, or lease-takeover offer
+        by its title (2026-08-28 business sign-off: auction and leasing
+        takeover are both a hard reject).
     This keeps even very cheap genuine cars (e.g. a 2006 Passat ~EUR 900) while
     dropping parts. It is deliberately NOT a tolerance rule, so the
     "unknown never fails" principle is preserved for real vehicles.
@@ -765,7 +949,7 @@ def qualifies_as_vehicle(row) -> bool:
     if price is None or price < VEHICLE_PRICE_FLOOR:
         return False
     title = row.get("title")
-    if isinstance(title, str) and _PARTS_TITLE_RE.search(title):
+    if isinstance(title, str) and (_PARTS_TITLE_RE.search(title) or _REJECT_TITLE_RE.search(title)):
         return False
     has_year = _int(row.get("year")) is not None
     has_km = _int(row.get("km")) is not None
@@ -786,7 +970,8 @@ def match(car: InvCar, df: pd.DataFrame, rules: RuleSet) -> tuple[pd.DataFrame, 
             keep.append(idx)
             trails.append(outcomes)
     out = df.loc[keep].copy().reset_index(drop=True)
-    for f in ["brand", "model", "fuel", "variant", "year", "km", "power", "transmission", "body_type"]:
+    for f in ["brand", "model", "generation", "fuel", "variant", "year", "km",
+              "power", "transmission", "drivetrain", "body_type"]:
         out[f"rule_{f}"] = [t[f] for t in trails]
     return out, disq
 
@@ -804,30 +989,32 @@ def _unknown_fraction(df: pd.DataFrame) -> float:
 # --------------------------------------------------------------------------- #
 # Mileage similarity (explicit confidence factor)
 # --------------------------------------------------------------------------- #
-# The comparability rules gate km with a PERCENTAGE of the submitted car's own
-# mileage (STRICT +/-30%, MODERATE +/-40%, BROAD +/-60%, with absolute floors).
-# For a very high-mileage car that percentage window becomes enormous (a 250k km
-# car admits +/-150k km under BROAD), so much-lower-mileage listings slip into
-# the pool, drag the median up, and the car reads "below market" with HIGH
-# confidence. This factor measures how well the ACTUAL comparable-mileage
+# The comparability rules now gate km with a FLAT absolute band per tier
+# (STRICT +/-20,000, MODERATE +/-40,000, BROAD +/-100,000 -- 2026-08-26
+# change, widened further 2026-08-28, see phase5_compare.RuleSet's own
+# comment; before the 08-26 change they were a PERCENTAGE
+# of the submitted car's own mileage, which for a very high-mileage car ballooned
+# the window enormously, e.g. a 250k km car once admitted +/-150k km under
+# BROAD). This factor measures how well the ACTUAL comparable-mileage
 # distribution matches the submitted car and downgrades confidence when it does
-# not - WITHOUT touching the price calculation.
-#
-# Thresholds are deliberately reused from the engine's own km tolerances rather
-# than invented:
-#   * MILEAGE_NOISE_FLOOR_KM = STRICT.km_floor (20,000): absolute gaps this small
-#     are already treated as negligible by the matcher, so they are always GOOD.
-#   * GOOD  <= 0.30  == STRICT.km_pct   (a tight comparable)
-#   * MODERATE <= 0.60 == BROAD.km_pct  (still an accepted comparable, but loose)
+# not - WITHOUT touching the price calculation. It is a SEPARATE, softer signal
+# than the hard match rules above, so it keeps its own independently-tuned
+# relative-percentage thresholds below rather than reusing the (now flat, and
+# therefore no longer expressible as a percentage) RuleSet km fields:
+#   * MILEAGE_NOISE_FLOOR_KM = 20,000: absolute gaps this small are already
+#     treated as negligible, so they are always GOOD. Still matches STRICT's
+#     own flat km band by construction, just no longer derived from it.
+#   * GOOD  <= 0.30  (comparable-median mileage within 30% of submitted)
+#   * MODERATE <= 0.60 (still an accepted comparable, but loose)
 #   * LARGE <= 1.00                     (median differs by up to 100%)
 #   * VERY_LARGE > 1.00                 (median differs by more than 100%, e.g.
 #                                        comparables have < half or > double the km)
 # The relative distance uses the SMALLER of (submitted, comparable-median) as the
 # base so the dangerous "high-mileage car vs low-mileage comparables" direction
 # is not numerically compressed (250k vs 100k => 1.50, i.e. VERY_LARGE).
-MILEAGE_NOISE_FLOOR_KM = STRICT.km_floor          # 20,000
-MILEAGE_GOOD_MAX = STRICT.km_pct                  # 0.30
-MILEAGE_MODERATE_MAX = BROAD.km_pct               # 0.60
+MILEAGE_NOISE_FLOOR_KM = 20_000
+MILEAGE_GOOD_MAX = 0.30
+MILEAGE_MODERATE_MAX = 0.60
 MILEAGE_LARGE_MAX = 1.00
 
 # Ordering for capping logic (higher = worse). "unknown" sits above moderate:
@@ -971,8 +1158,24 @@ def confidence_level(strict_n: int, unknown_frac: float) -> str:
 _SANE_RATIO_LOW = 0.20   # market >= 20% of asking  (=> undervaluation <= +80%)
 _SANE_RATIO_HIGH = 5.0   # market <= 5x asking       (=> overvaluation bounded)
 
+# A MODERATE/BROAD group needs >= this many comparables to be trusted -- their
+# looser tolerances (dropped variant/transmission requirements, wider mileage
+# bands) mean any single match could easily be a poor stand-in for the actual
+# car, so a bigger sample is required to average that noise out. Defined here
+# (moved up from just above adaptive_estimate) so estimate() below can default
+# to it.
+MIN_USABLE = 4
 
-def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
+
+def estimate(car: InvCar, strict: pd.DataFrame, min_usable: int = MIN_USABLE) -> dict:
+    """`min_usable` is the sample-size floor below which the result is
+    flagged "insufficient_sample". Defaults to MIN_USABLE (4) for any direct
+    caller, but adaptive_estimate() below always passes 1 (2026-08-25): tier
+    SELECTION already guarantees whatever pool is passed in here has >=1
+    match unless literally nothing matched at any tier, so
+    insufficient_sample effectively means "zero comparables", full stop --
+    sample-size TRUST (vs. bare usability) is confidence_flag()'s job now,
+    driven by which tier was reached, not a count floor here."""
     stats = price_stats(strict) if not strict.empty else {"count": 0}
     n = stats.get("count", 0)
     unk = _unknown_fraction(strict)
@@ -991,7 +1194,7 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
         "market_p75": stats.get("p75"),
         "estimated_market_price": stats.get("median"),
         "confidence": confidence_level(n, unk),
-        "insufficient_sample": n < 4,
+        "insufficient_sample": n < min_usable,
         "unknown_year_km_frac": round(unk, 2),
         # --- mileage similarity factor (transparent) ---
         "mileage_match": mileage["category"],
@@ -1037,34 +1240,54 @@ def estimate(car: InvCar, strict: pd.DataFrame) -> dict:
     return res
 
 
-MIN_USABLE = 4  # a group needs >= this many comparables to be trusted
-
-# Ordered tightest -> loosest. The adaptive selector reports the *tightest* tier
-# that reaches MIN_USABLE, so each car gets the most precise estimate its data
-# can support instead of a one-size-fits-all threshold.
+# Ordered tightest -> loosest. The adaptive selector reports the *tightest*
+# tier with ANY match at all (2026-08-25: MIN_USABLE no longer gates
+# SELECTION for any tier -- see adaptive_estimate) -- so each car gets the
+# most precise estimate its data can support instead of a one-size-fits-all
+# count threshold. MIN_USABLE is now purely a confidence-labeling input
+# (phase7_fullrun.confidence_flag): the number of comparables no longer
+# decides whether a tier's data is usable, only how much to trust it.
 TIERS = (STRICT, MODERATE, BROAD)
 
 
 def adaptive_estimate(car: InvCar, source_df: pd.DataFrame) -> dict:
     """
-    Evaluate a source's candidates at every tolerance tier and pick the tightest
-    tier reaching MIN_USABLE comparables. If none do, fall back to the loosest
-    (BROAD) and flag it insufficient. Returns the estimate plus provenance:
-    `tier_used`, per-tier counts, and the matched rows for the chosen tier.
+    Evaluate a source's candidates at every tolerance tier and pick the
+    TIGHTEST tier with at least one match, full stop -- STRICT, MODERATE, and
+    BROAD are all treated the same way now (2026-08-25 change): a tier's
+    tighter tolerances (variant/transmission for STRICT, mileage band width
+    for all three) are what make a match meaningful, not how many of them
+    there are. A source with 2 MODERATE matches now reports the MODERATE
+    median, not a broader/less precise fallback pool it happens to have more
+    of. (Earlier, MODERATE/BROAD still needed MIN_USABLE=4 to be selected at
+    all, so a lone MODERATE match fell through to a BROAD-only fallback and
+    got treated as though STRICT/MODERATE had nothing.)
+
+    Sample-size trust is now confidence_flag()'s job, driven by which tier
+    was reached (STRICT -> HIGH, MODERATE -> MEDIUM, BROAD -> LOW baseline),
+    not this function's. Only a source with ZERO matches at every tier (the
+    BROAD fallback below, matched empty) is genuinely insufficient.
+
+    Returns the estimate plus provenance: `tier_used`, per-tier counts, and
+    the matched rows for the chosen tier.
     """
     per_tier = {}
     chosen = None
     for rs in TIERS:
         matched, _ = match(car, source_df, rs)
         per_tier[rs.name] = len(matched)
-        if chosen is None and len(matched) >= MIN_USABLE:
+        if chosen is None and len(matched) >= 1:
             chosen = (rs, matched)
     if chosen is None:
         rs = BROAD
         matched, _ = match(car, source_df, rs)
         chosen = (rs, matched)
     rs, matched = chosen
-    est = estimate(car, matched)
+    # Any tier that got selected above did so with >=1 match already -- the
+    # only way `matched` is empty here is the "nothing anywhere" fallback,
+    # so min_usable=1 (i.e. insufficient_sample = n == 0) is correct for
+    # every case, not just STRICT.
+    est = estimate(car, matched, min_usable=1)
     est["tier_used"] = rs.name
     est["tier_counts"] = "/".join(f"{t.name[:3]}:{per_tier[t.name]}" for t in TIERS)
     return est, matched

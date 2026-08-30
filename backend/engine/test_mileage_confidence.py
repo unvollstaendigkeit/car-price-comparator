@@ -29,14 +29,23 @@ from phase7_fullrun import confidence_flag, InvCar
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def _est(comparable_count, median, mileage, unknown_frac=0.0):
-    """Minimal per-source est dict shaped like phase6_validate.estimate()."""
+def _est(comparable_count, median, mileage, unknown_frac=0.0, tier_used="strict"):
+    """Minimal per-source est dict shaped like phase6_validate.estimate().
+    2026-08-25: confidence_flag() is now tier-driven (tier_used sets the
+    baseline: strict->HIGH, moderate->MEDIUM, broad->LOW), so this file's
+    tests -- which are purely about the mileage-driven CAPPING behavior on
+    top of that baseline, not about tier selection itself (see
+    test_adaptive_estimate.py for that) -- default to "strict" so the
+    baseline starts at HIGH and each test's mileage scenario is what pulls
+    it down, same intent as before this became tier-aware."""
     return {
         "comparable_count": comparable_count,
         "market_median": median,
         "unknown_year_km_frac": unknown_frac,
         "mileage_match": mileage["category"],
         "mileage": mileage,
+        "insufficient_sample": comparable_count == 0,
+        "tier_used": tier_used,
     }
 
 
@@ -159,10 +168,14 @@ def test_unverifiable_comparable_mileage_caps_at_medium():
     assert "mileage" in reasons.lower()
 
 
-def test_insufficient_still_wins_over_mileage():
+def test_insufficient_only_when_both_sources_have_zero_comparables():
+    # 2026-08-25: a nonzero count (even 1) is no longer "insufficient" on its
+    # own -- see test_adaptive_estimate.py / test_evaluate_car.py. Only a
+    # genuine zero-comparables-anywhere case reaches INSUFFICIENT here,
+    # regardless of mileage.
     good = _good()
-    ab = _est(1, 8000, good)          # below MIN_USABLE
-    bz = _est(2, 8100, good)
+    ab = _est(0, None, good)
+    bz = _est(0, None, good)
     flag, _ = confidence_flag(_car(), ab, bz)
     assert flag == "INSUFFICIENT"
 

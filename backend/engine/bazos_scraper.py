@@ -56,7 +56,7 @@ except ImportError:
     pd = None
 
 # Reuse the vetted primitives from the Autobazar layer (same folder / package).
-from autobazar_scraper import BlockedError, HEADERS, clean_int  # noqa: E402
+from autobazar_scraper import BlockedError, HEADERS, NotFoundError, clean_int  # noqa: E402
 import http_client  # bounded, instrumented GET (hard wall-clock deadline)
 from http_client import FetchTimeout  # noqa: F401 - re-exported for callers
 
@@ -181,6 +181,11 @@ def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "",
             f"Stopping — no CAPTCHA/Cloudflare bypass will be attempted."
         )
 
+    # Definitive "gone" -- distinct from a block, and from the generic
+    # fallback below: a removed/expired listing, not a failure to retry.
+    if status in (404, 410):
+        raise NotFoundError(f"{url!r} returned HTTP {status} (listing not found/gone).")
+
     if status != 200:
         raise BlockedError(f"Unexpected HTTP {status} for {url!r}.")
 
@@ -208,6 +213,22 @@ _YEAR_PATTERNS = [
     #   month/year '1/2022' or '05/2022' (kept last so labelled years win)
     re.compile(r"\b\d{1,2}/((?:19|20)\d{2})\b"),
 ]
+# Indices into _YEAR_PATTERNS above that are "last-resort UNLABELLED" (no
+# year-ish keyword required at all) -- the only ones at risk of misreading an
+# unrelated future validity/expiry date as the car's own year. Both share
+# that risk category, not just the last one.
+_UNLABELLED_PATTERN_INDICES = {2, 3}
+# Confirmed live 2026-08-28: "STK/EK do 12/2026" (Slovak: technical/emissions
+# inspection valid until) matched the bare month/year pattern and silently
+# won over the CORRECT year sitting right there in the title ("Seat Ibiza fr
+# 2016" extracted as 2026) -- 734 rows affected in the captured dataset.
+# Insurance ("poistka"/"poistenie") and warranty ("záruka") are the same
+# shape of problem and included pre-emptively, not yet separately confirmed
+# at the same scale.
+_YEAR_FALSE_CONTEXT_RE = re.compile(
+    r"\bstk\b|\bek\b|\btk\b|kontrol|poist|z[aá]ruk", re.I,
+)
+_YEAR_CONTEXT_WINDOW = 20  # chars immediately before the match to inspect
 
 
 def extract_year(text: str) -> int | None:
@@ -220,11 +241,16 @@ def extract_year(text: str) -> int | None:
         return None
     import datetime
     max_year = datetime.date.today().year + 1
-    for pat in _YEAR_PATTERNS:
+    for pi, pat in enumerate(_YEAR_PATTERNS):
         for m in pat.finditer(text):
             y = int(m.group(1))
-            if 1990 <= y <= max_year:
-                return y
+            if not (1990 <= y <= max_year):
+                continue
+            if pi in _UNLABELLED_PATTERN_INDICES:
+                context = text[max(0, m.start() - _YEAR_CONTEXT_WINDOW):m.start()]
+                if _YEAR_FALSE_CONTEXT_RE.search(context):
+                    continue
+            return y
     return None
 
 
@@ -288,10 +314,35 @@ def extract_km(text: str) -> int | None:
 # strict \b word boundaries.
 _B = r"(?<![a-z])"   # left: not preceded by a letter (digit/space/punct OK)
 _Bx = r"(?![a-z])"   # right: not followed by a letter
+
+# "elektrick[yýaeé]"/"elektro" is Slovak for "electric" as an EQUIPMENT
+# adjective ("elektrické okná" = power windows, "elektricky ovládané ťažné
+# zariadenie" = electrically-operated tow hitch) far more often in these ads
+# than it describes the car's own propulsion -- confirmed 2026-08-28: this
+# false-positive alone mislabeled ~8% of ALL captured Bazoš listings as
+# "Electric" (6,682 rows, 91% of which have zero genuine electric signal in
+# their own title -- e.g. a plain "2.0 TDI" Octavia whose description just
+# happened to mention an electrically-operated tow hitch). This negative
+# lookahead rejects exactly the equipment-noun contexts that caused it,
+# without touching genuine propulsion mentions ("elektromobil", "elektrický
+# pohon", "auto na elektrický pohon").
+#
+# 2026-08-29: widened from "the immediately next word" to "within the next
+# 0-3 words" after a live recall audit found a real remaining miss --
+# "Elektrické sklopné spätné zrkadlá" (electric fold-away rear mirrors) has
+# TWO adjectives ("sklopné spätné") between the electric-adjective and the
+# equipment noun ("zrkadlá"), which the single-word lookahead didn't reach.
+_ELECTRIC_EQUIPMENT_NOUNS = (
+    r"ovládan|okn|zrkadl|sedadl|vyhrievan|riaden|zamykan|"
+    r"nastaviteľn|sklápa|st[eě]rač|ťažn|kľučk|kufr|strech"
+)
 _FUEL_RULES = [
     ("PHEV", re.compile(r"plug[\s\-]*in|phev", re.I)),
     ("Hybrid", re.compile(r"\bhybrid(?:n[yýaeé])?\b|\bhev\b", re.I)),
-    ("Electric", re.compile(r"\belektr(?:o|ick[yýaeé]|omobil)\b|\bev\b|\bbev\b", re.I)),
+    ("Electric", re.compile(
+        r"\belektr(?:o|ick[yýaeé]|omobil)\b"
+        r"(?!\s*(?:\w+\s+){0,3}(?:" + _ELECTRIC_EQUIPMENT_NOUNS + r"))"
+        r"|\bev\b|\bbev\b", re.I)),
     ("Diesel", re.compile(
         r"\bdiesel\b|\bnafta\b|" + _B + r"(?:tdi|cdi|hdi|dci|crdi|cdti)" + _Bx, re.I)),
     ("LPG", re.compile(r"\blpg\b", re.I)),
@@ -300,15 +351,116 @@ _FUEL_RULES = [
         r"\bbenz[ií]n(?:ov[yýaeé])?\b|\bpetrol\b|" + _B + r"(?:tsi|tfsi|mpi|fsi)" + _Bx, re.I)),
 ]
 
+# Structured "Palivo: <value>" label (2026-08-30) -- many Bazoš dealer-
+# template ads state fuel explicitly, e.g. "▶️Palivo: Diesel". This is
+# authoritative (the seller's own labeled field), unlike a keyword found
+# ANYWHERE in a long free-text description -- and checking it FIRST fixes
+# a real, still-recurring bug found via a live recall audit even after the
+# 2026-08-28/29 equipment-noun exclusion fixes above: those fixes only
+# closed specific noun-list gaps, but Slovak has many more inflected/
+# derived equipment-adjective forms than any noun list can enumerate (this
+# audit's own live example: "Predné elektricky nastaviteľné sedačky" uses
+# "sedačky", not the listed "sedadl" stem; "elektricky ovládatelný kufor"
+# uses the adjective "ovládateľný", not the listed "ovládan" noun stem --
+# a genuine whack-a-mole problem). Worse, even a SHIELDED equipment mention
+# elsewhere doesn't need to slip past the noun list at all to cause this:
+# _FUEL_RULES checks "Electric" before "Diesel", so ANY unshielded
+# "elektricky ..." equipment mention anywhere in the text outranks an
+# explicit "Palivo: Diesel" label stated elsewhere in the SAME description
+# -- confirmed live: listing 195016860, a plain "Škoda Octavia 2.0 TDI"
+# whose own description says "▶️Palivo: Diesel", was stored as fuel=
+# 'Electric' purely because of an unrelated "elektricky ovládatelný
+# kufor" (electrically-operated boot) equipment mention later in the same
+# text. Checking the label first sidesteps the whole equipment-noun
+# problem for any ad that states it, rather than chasing an open-ended
+# list of Slovak inflections.
+_PALIVO_LABEL_RE = re.compile(r"\bpalivo\s*[:\-]?\s*([^\n▶✅✔•]{1,40})", re.I)
+# 2026-08-30, second pass: a live recall audit after the Palivo fix above
+# found the SAME "Electric" false-positive still recurring on ads that use
+# a "Motor: <displacement> <badge/word>" field instead of (or in addition
+# to) "Palivo:" -- e.g. "Motor: 1.5 TSI, benzín" or "Motor: 1,5 DIESEL (81
+# kW)". Unlike Palivo, the fuel signal in a Motor value isn't always the
+# first word and isn't always a spelled-out word at all (often just an
+# engine badge like "dCi"/"TDI") -- confirmed live: listing 194923025, a
+# "1.5 TSI, benzín" Kodiaq, was still stored as fuel='Electric' purely
+# because of an unrelated "Elektrické otváranie/zatváranie kufra"
+# (electric boot open/close) mention elsewhere in the same description --
+# the "/" between "otváranie" and "zatváranie" even breaks the 0-3-word
+# lookahead's own \w+\s+ tokenization, since there's no whitespace INSIDE
+# that glued pair for it to count across. Rather than chase that
+# tokenization edge case too, the Motor: label sidesteps it exactly the
+# same way Palivo: does.
+_MOTOR_LABEL_RE = re.compile(r"\bmotor\s*[:\-]?\s*([^\n▶✅✔•]{1,60})", re.I)
+_FUEL_LABEL_KEYWORD_MAP = (
+    ("plug", "PHEV"),
+    ("hybrid", "Hybrid"),
+    ("elekt", "Electric"),
+    ("diesel", "Diesel"),
+    ("nafta", "Diesel"),
+    ("benz", "Petrol"),
+    ("lpg", "LPG"),
+    ("cng", "CNG"),
+    # Engine badges -- only meaningful within an already-scoped Motor:
+    # value (too broad to search for unscoped, which is exactly why
+    # _FUEL_RULES below uses its own tighter, glued-to-digits boundary
+    # version of these instead of reusing this map directly).
+    ("tdi", "Diesel"), ("cdi", "Diesel"), ("hdi", "Diesel"),
+    ("dci", "Diesel"), ("crdi", "Diesel"), ("cdti", "Diesel"),
+    ("tsi", "Petrol"), ("tfsi", "Petrol"), ("mpi", "Petrol"), ("fsi", "Petrol"),
+)
+# A dealer sometimes states a COMPOUND value for a plug-in/mild hybrid,
+# e.g. "Palivo: benzín + elektro/SOH 95,6%" -- neither half alone is the
+# right answer (plain "Petrol" would silently discard the electric half
+# entirely). Rather than guess PHEV vs. mild-hybrid from this alone,
+# _fuel_value_to_label backs off and lets the ordinary free-text
+# _FUEL_RULES below decide (which already correctly reads an explicit
+# "Plug-in Hybrid"/"Hybrid" wording elsewhere in the title/description)
+# -- this keeps the label check a pure improvement: it either fixes the
+# equipment-noun false positive or no-ops back to prior behavior, never
+# makes a compound case worse than it already was.
+_LABEL_COMBUSTION_WORD = re.compile(r"diesel|nafta|benz", re.I)
+_LABEL_ELECTRIC_WORD = re.compile(r"elekt", re.I)
+
+
+def _fuel_value_to_label(value: str) -> str | None:
+    if _LABEL_ELECTRIC_WORD.search(value) and _LABEL_COMBUSTION_WORD.search(value):
+        return None  # compound value -- defer to the free-text rules below
+    value = value.strip().lower()
+    for keyword, label in _FUEL_LABEL_KEYWORD_MAP:
+        if keyword in value:
+            return label
+    return None
+
+
+def _fuel_from_label(text: str) -> str | None:
+    # Palivo (an explicit "fuel" field) checked before Motor (an "engine
+    # spec" field where fuel is secondary, incidental information) --
+    # Palivo is the more directly authoritative source when both exist.
+    for pat in (_PALIVO_LABEL_RE, _MOTOR_LABEL_RE):
+        m = pat.search(text)
+        if m:
+            label = _fuel_value_to_label(m.group(1))
+            if label:
+                return label
+    return None  # no label found, or labeled with an unrecognized value -- fall through
+
 
 def extract_fuel(text: str) -> str | None:
     """Normalize fuel to Diesel/Petrol/Hybrid/PHEV/Electric/LPG/CNG or None.
+
+    Checks the explicit "Palivo: <value>" label first (see
+    _FUEL_LABEL_RE's own comment); only falls back to the free-text
+    keyword rules below when no such label is present or its value isn't
+    recognized.
 
     NOTE: engine badges are used as strong hints (TDI=>Diesel, TSI=>Petrol) but
     only when no explicit fuel word appears earlier in the ordered rule set.
     """
     if not text:
         return None
+    labeled = _fuel_from_label(text)
+    if labeled:
+        return labeled
     for label, pat in _FUEL_RULES:
         if pat.search(text):
             return label
