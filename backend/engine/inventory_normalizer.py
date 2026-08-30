@@ -225,13 +225,23 @@ _UNAVAILABLE_PRICE_RE = re.compile(
     re.I,
 )
 
+# "Netto"/"net" marks a price as EXCLUDING VAT. Dealer sheets quote these
+# alongside gross ("Brutto") prices; the market comparables we value against
+# are gross (VAT-included) asking prices, so a net price must be grossed up
+# before comparison or it looks artificially undervalued.
+_NET_PRICE_RE = re.compile(r"\bnetto\b|\bnet\b", re.I)
+VAT_RATE = 0.23  # Slovak standard VAT rate used to gross up net prices
+
 
 def norm_price(raw) -> tuple[Optional[int], str, Optional[str]]:
     """
     Returns (price_int_or_None, status, original_string).
-    status is one of: 'active', 'sold', 'reserved', 'unavailable', 'missing',
-    'unparsed'. A non-numeric availability token (SOLD, Reserved, ...) yields a
-    valid record with price=None - it is excluded from valuation, not rejected.
+    status is one of: 'active', 'active_net', 'sold', 'reserved', 'unavailable',
+    'missing', 'unparsed'. A non-numeric availability token (SOLD, Reserved,
+    ...) yields a valid record with price=None - it is excluded from
+    valuation, not rejected. 'active_net' means the original cell was marked
+    "Netto"/"net" (VAT-excluded); the returned price has already been grossed
+    up by VAT_RATE (+23%) so it is comparable to gross market asking prices.
     """
     original = _clean_text(raw)
     if original is None:
@@ -247,6 +257,8 @@ def norm_price(raw) -> tuple[Optional[int], str, Optional[str]]:
     value = _to_int(original)
     if value is None:
         return None, "unparsed", original
+    if _NET_PRICE_RE.search(original):
+        return round(value * (1 + VAT_RATE)), "active_net", original
     return value, "active", original
 
 
@@ -453,11 +465,18 @@ def _normalize_rows(df: pd.DataFrame, mapping: dict[str, str]) -> tuple[pd.DataF
             valuable = False
         else:
             valuable = True
+            if status == "active_net":
+                issues.append(
+                    f"price marked Netto ({price_orig!r}): grossed up +{VAT_RATE:.0%} VAT to EUR {price:,}"
+                )
 
-        # valid for comparison = all required present AND a usable numeric price
+        # valid for comparison = all required present AND a usable numeric price.
+        # "excluded from valuation" (sold/reserved/unavailable) and the Netto
+        # gross-up note are both informational, not blocking.
         blocking = [
             x for x in issues
             if not x.endswith("excluded from valuation")
+            and not x.startswith("price marked Netto")
         ]
         rec["valid_for_comparison"] = (len(blocking) == 0) and valuable
         rec["issues"] = "; ".join(issues)

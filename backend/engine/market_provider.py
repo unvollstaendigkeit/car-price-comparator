@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import os
 import pickle
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
@@ -351,3 +353,222 @@ class PersistentCacheProvider:
                 self.store.save(self.path)
         except Exception:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# MarketCollectorProvider: DB-backed transport (opt-in, NOT the default)
+# --------------------------------------------------------------------------- #
+# market-collector is a separate, standalone project/repo (its own historical
+# SQLite collector + bridge), not part of this codebase. Its path is
+# overridable via env vars (e.g. for tests, or a different machine layout).
+# Import of its bridge module is deliberately deferred to
+# MarketCollectorProvider.__init__ below -- NOT done at this file's top level
+# -- so that merely importing market_provider.py (which every existing
+# caller, e.g. inventory_run.py, already does unconditionally) never requires
+# market-collector to be present. In the deployed backend it currently isn't.
+# Only actually constructing this provider does.
+MARKET_COLLECTOR_PATH = os.environ.get(
+    "MARKET_COLLECTOR_PATH", "/Users/nikolaoberlaender/Documents/market-collector",
+)
+MARKET_COLLECTOR_DB_PATH = os.environ.get(
+    "MARKET_COLLECTOR_DB_PATH",
+    os.path.join(MARKET_COLLECTOR_PATH, "data", "market_history.sqlite3"),
+)
+
+NO_SNAPSHOT_ERR = "NO_SNAPSHOT: no completed FULL collection run available"
+
+
+class MarketCollectorProvider:
+    """
+    DB-backed transport reading market-collector's historical SQLite data
+    through its existing bridge (bridge/to_display_fields.py) -- a read-only
+    adapter, never a live fetch, never a fallback to live retrieval. NOT the
+    production default: pass an instance of this class explicitly as
+    `provider=` to analyze_inventory() / compare_single_car() to use it;
+    nothing wires it in automatically.
+
+    Two sources, tried in order, per retrieve() call (2026-08-24):
+
+    1. PRIMARY -- the incremental pipeline (discover.py/collect_daily.py's
+       rolling capture ledger), via bridge.load_incremental_display_fields_df.
+       No "run" concept at all: that pipeline captures each listing_id
+       exactly once, ever, so there's no periodic snapshot to resolve --
+       see that function's own module comment for the full architectural
+       reasoning. This is checked first and used whenever it returns any
+       rows, since it's the actively-maintained, currently-growing dataset.
+    2. FALLBACK -- the older collection_runs snapshot path (unchanged from
+       before), used only when the incremental query for that specific
+       (source, brand, model) comes back empty. Exactly ONE collection run
+       is resolved for this path -- ONCE, at construction time, via the
+       bridge's own resolve_collection_run() -- and stored on `self.run`,
+       reused via `as_of` on every fallback call so a run appearing mid-
+       analysis can't make two cars in the same analysis land on different
+       snapshots. If no eligible FULL run exists, `self.run` is None and
+       the fallback simply has nothing to offer -- this is not an error,
+       it just means the primary result (however empty) stands.
+
+    A target with genuinely no data in either source returns an empty pool,
+    same as always -- never an exception, never a live fallback.
+
+    `pages` and `deadline` exist only for call-signature compatibility with
+    the other providers (inventory_run.py calls every provider the same way,
+    including its progressive-deepening retry with a larger `pages`). Neither
+    has a meaningful DB-read equivalent: there is no pagination to fake and no
+    per-request timeout to honor, so both are accepted and ignored. A
+    "deepen for more comparables" retry against this provider is a no-op --
+    it will get back the exact same, already-complete pool for that (source,
+    brand, model) in this run, not a deeper live page.
+
+    Brand/model matching: `car.brand`/`car.model` are passed to the bridge
+    exactly as-is -- the bridge already documents its own contract as
+    "matching the exact strings used at collection time"
+    (market-collector/targets.py) -- with explicit, evidence-based exceptions
+    in _BRAND_LOOKUP_OVERRIDES below. Investigated before adding "vw"
+    (comparing the real inventory's brand values against every
+    market-collector target brand): "VW" is the ONLY brand string that
+    appears in real inventory data but was never a market-collector
+    collection target (which only ever collected under "Volkswagen") -- 4 of
+    ~98 real inventory rows use it. "Fiat" also has no market-collector data,
+    but for a different reason (no Fiat target was ever collected under ANY
+    spelling), so there is nothing to map it to; it correctly still yields an
+    empty pool.
+
+    2026-08-28: "skoda"->"Škoda" and "citroen"->"Citroën" added after live
+    testing showed the "unmapped mismatch -> empty pool, never wrong data"
+    assumption above does NOT hold for the incremental path specifically.
+    Autobazar's own sitemap-detail capture (adapters/autobazar_detail_
+    adapter.py) stores search_brand from the listing's OWN advertised brand
+    field, which Autobazar spells with diacritics for these two brands --
+    "Skoda"/"Citroen" (as spelled everywhere else in this codebase, inventory
+    sheets included) never match, so _load_autobazar_incremental returns
+    EMPTY for every Škoda/Citroën car, unconditionally triggering the
+    FALLBACK to the one pinned collection_runs snapshot (observed 2026-08-16,
+    12 days stale at the time this was found) instead of the actively-growing
+    incremental pool -- 3,810 fresh sitemap_detail rows for these two brands
+    were being silently bypassed in favor of stale data, not an empty pool.
+
+    Crucially, this extra override is Autobazar-INCREMENTAL-only, applied on
+    top of (never instead of) _BRAND_LOOKUP_OVERRIDES, for two independent
+    reasons, both confirmed by briefly breaking each during testing:
+      * Source: Bazoš's incremental query matches by free-text TITLE
+        substring (ad sellers overwhelmingly type "Skoda"/"VW" casually,
+        unaccented), not an exact structured field -- remapping its query
+        brand to "Škoda" makes the substring search fail against real
+        Bazoš titles, silently zeroing out Bazoš results for these brands.
+      * Path: the FALLBACK snapshot's autobazar_listings rows were captured
+        via market-collector's own search targets (targets.py), which spell
+        every brand WITHOUT diacritics -- "Skoda"/"Citroen" match there
+        UNMAPPED, so remapping them for that query breaks the fallback path
+        for exactly the cars it exists to serve. "vw" doesn't have this
+        problem: targets.py only ever collected VW under "Volkswagen"
+        (never "VW"), the same spelling Autobazar's own sitemap data uses,
+        so _BRAND_LOOKUP_OVERRIDES applying it everywhere (source- and
+        path-agnostic, unchanged from before this fix) is correct.
+
+    Neither override is a general brand-alias system -- they do not reuse or
+    extend phase6_validate._BRAND_ALIASES (built for TITLE substring
+    matching) or _BRAND_SLUG (built for Autobazar URL slugs), since neither
+    is "the" canonical brand mapper and generalizing either for this would be
+    inventing new matching logic. Any OTHER unmapped mismatch still simply
+    yields an empty pool on the incremental path (see NO_SNAPSHOT_ERR / the
+    bridge's own empty-DataFrame contract) and is tried as-is against the
+    fallback -- worth re-auditing if another such brand surfaces.
+    """
+
+    is_live = False  # never touches the network, unconditionally
+
+    # The one explicit, evidence-based brand mapping applied UNIFORMLY --
+    # every source, both the incremental and fallback paths. Keys are
+    # lowercased for a case-insensitive match against car.brand.
+    _BRAND_LOOKUP_OVERRIDES = {"vw": "Volkswagen"}
+
+    # Extra override layered ONLY on top of Autobazar's INCREMENTAL query --
+    # see docstring above for why this can't be broader (source or path).
+    # "mg" added 2026-08-28 via the same systematic audit that found
+    # "skoda"/"citroen": Autobazar's own sitemap data spells it "Mg"
+    # (mixed case), while targets.py's old snapshot-path collection used
+    # "MG" (matching our own canonical spelling) -- same asymmetry, same
+    # fix shape, just a case mismatch instead of a diacritic one.
+    _AUTOBAZAR_INCREMENTAL_EXTRA_OVERRIDES = {
+        "skoda": "Škoda",
+        "citroen": "Citroën",
+        "mg": "Mg",
+    }
+
+    def __init__(self, db_path: str = MARKET_COLLECTOR_DB_PATH,
+                 as_of: Optional[str] = None):
+        if MARKET_COLLECTOR_PATH not in sys.path:
+            sys.path.insert(0, MARKET_COLLECTOR_PATH)
+        from bridge.to_display_fields import (
+            load_display_fields_df, load_incremental_display_fields_df, resolve_collection_run,
+        )
+
+        self.db_path = db_path
+        self._load_display_fields_df = load_display_fields_df
+        self._load_incremental_display_fields_df = load_incremental_display_fields_df
+        # Resolved ONCE here, for the FALLBACK path only; every retrieve()
+        # call reuses this via as_of. The primary (incremental) path never
+        # consults this -- it has no run concept to resolve.
+        self.run = resolve_collection_run(db_path, as_of)
+
+    def _age_s(self) -> Optional[float]:
+        if self.run is None:
+            return None
+        return time.time() - datetime.fromisoformat(self.run.observed_at).timestamp()
+
+    def peek(self, source: str, car, pages: int) -> Optional[dict]:
+        """Report this provider's status -- always cache-shaped (never a
+        live fetch, unconditionally), regardless of whether a fallback
+        snapshot run exists, since the primary incremental path can serve
+        real data either way. Doesn't attempt to predict whether THIS
+        specific brand/model will actually have rows -- that's retrieve()'s
+        job; peek() stays a cheap, no-query check."""
+        return {"from_cache": True, "age_s": self._age_s()}
+
+    def retrieve(self, source: str, car, pages: int,
+                 deadline: Optional[float] = None) -> RetrieveResult:
+        brand_key = (car.brand or "").strip().lower()
+        brand = self._BRAND_LOOKUP_OVERRIDES.get(brand_key, car.brand)
+        incremental_brand = brand
+        if source == "autobazar":
+            incremental_brand = self._AUTOBAZAR_INCREMENTAL_EXTRA_OVERRIDES.get(brand_key, brand)
+
+        t0 = time.perf_counter()
+        df = self._load_incremental_display_fields_df(self.db_path, source, incremental_brand, car.model)
+        elapsed = time.perf_counter() - t0
+        if not df.empty:
+            # No single "age" applies to a pool whose rows span many
+            # distinct observed_at instants (unlike the fallback's one
+            # pinned snapshot) -- reporting one would imply a precision
+            # that doesn't exist, so this is honestly None rather than a
+            # made-up summary statistic.
+            return RetrieveResult(df=df, err="", elapsed_s=elapsed, http_requests=0,
+                                  from_cache=True, age_s=None)
+
+        # Incremental had nothing for this specific (source, brand, model)
+        # -- fall back to the older collection_runs snapshot, if any was
+        # resolved at construction. Genuine market scarcity in EITHER path
+        # is not an error (same "sparse result != failure" distinction the
+        # live retrievers already draw), so err stays "" whenever a query
+        # actually ran; NO_SNAPSHOT_ERR is reserved for the one case where
+        # neither source has anything to offer at all.
+        if self.run is None:
+            return RetrieveResult(df=df, err=NO_SNAPSHOT_ERR, elapsed_s=elapsed, http_requests=0,
+                                  from_cache=True, age_s=None)
+
+        t0 = time.perf_counter()
+        df = self._load_display_fields_df(
+            self.db_path, source, brand, car.model, as_of=self.run.observed_at,
+        )
+        elapsed = time.perf_counter() - t0
+        return RetrieveResult(df=df, err="", elapsed_s=elapsed, http_requests=0,
+                              from_cache=True, age_s=self._age_s())
+
+    def flush(self) -> None:
+        """No-op: nothing here is ever accumulated in memory to persist (unlike
+        PersistentCacheProvider's store) -- the resolved run and every
+        retrieve() result come straight from a read-only DB query each time.
+        Exists only so callers that unconditionally call provider.flush()
+        after a run (e.g. main.py's inventory endpoint) work with either
+        provider without a type check."""
+        pass

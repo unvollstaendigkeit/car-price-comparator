@@ -18,8 +18,14 @@ through unchanged):
   POST /api/compare/stream     - single-car comparison as an SSE progress stream
 
 /api/inventory/parse and /demo do PARSING/VALIDATION ONLY — no scraping.
-/api/inventory/analyze/stream DOES retrieve from the marketplaces, reusing the
-same engine + polite pacing as the single-car path (grouped per brand+model).
+/api/inventory/analyze/stream, /api/compare, and /api/compare/stream all read
+market comparables via the SAME provider-selection logic (see
+_build_market_provider): MarketCollectorProvider — a read-only, DB-backed
+bridge into market-collector's continuously-updated capture ledger (see
+that sibling project) — by default, with a per-request `refresh=true` or a
+per-endpoint env var (INVENTORY_MARKET_PROVIDER / COMPARE_MARKET_PROVIDER
+set to "legacy") falling back to on-demand live scraping instead. No
+endpoint here does live scraping by default anymore as of 2026-08-30.
 """
 from __future__ import annotations
 
@@ -47,7 +53,6 @@ from single_car import (  # noqa: E402  (import after sys.path setup)
     build_canonical_car,
     compare_single_car,
 )
-from phase6_validate import retrieve_autobazar, retrieve_bazos  # noqa: E402
 from row_parser import parse_pasted_row  # noqa: E402
 from inventory_api import (  # noqa: E402
     InventoryReadError,
@@ -55,7 +60,7 @@ from inventory_api import (  # noqa: E402
     parse_upload,
 )
 from inventory_run import analyze_inventory  # noqa: E402
-from market_provider import PersistentCacheProvider  # noqa: E402
+from market_provider import PersistentCacheProvider, MarketCollectorProvider  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -104,9 +109,12 @@ class CarPayload(BaseModel):
     power_kw: Optional[int] = None
     transmission: Optional[str] = None
     body_type: Optional[str] = None
-    # Retrieval breadth (kept modest for responsiveness).
+    # Retrieval breadth (kept modest for responsiveness). Ignored by
+    # MarketCollectorProvider (see _build_market_provider) -- meaningful
+    # only when refresh=true forces the live provider.
     max_pages: int = 3
     delay: float = 1.0
+    refresh: bool = False  # force a live refresh, ignoring the DB-backed provider
 
 
 def _to_input(p: CarPayload) -> SingleCarInput:
@@ -190,12 +198,67 @@ class InventoryAnalyzePayload(BaseModel):
     refresh: bool = False  # force a live refresh, ignoring cached pools
 
 
+# Shared provider selection, used by BOTH /api/inventory/analyze/stream and
+# (2026-08-30) /api/compare + /api/compare/stream -- previously those two
+# were "untouched and always use live retrieval directly"; now they use the
+# SAME DB-backed default as the inventory endpoint, via compare_single_car's
+# new `provider=` seam (see single_car.py's own docstring for that).
+#
+# 2026-08-24: MarketCollectorProvider (the read-only bridge into
+# market-collector's continuously-refreshed incremental capture ledger,
+# verified end-to-end against real same-day data) is the DEFAULT for both.
+# Falls back to the original live/cache provider in two cases:
+#   1. `refresh=true` is requested -- MarketCollectorProvider is read-only
+#      against a historical snapshot/ledger with no live-fetch capability
+#      at all, so an explicit refresh request must use the live provider
+#      regardless of the default.
+#   2. Constructing MarketCollectorProvider raises for any reason -- most
+#      likely market-collector simply isn't present on this machine/
+#      deployment (exactly the "deployed backend" gap this module used to
+#      warn about), caught here so that missing sibling project degrades
+#      the endpoint back to its original behavior instead of crashing it.
+#
+# `env_var` lets each endpoint keep an INDEPENDENT legacy escape hatch
+# (INVENTORY_MARKET_PROVIDER for the batch endpoint, COMPARE_MARKET_PROVIDER
+# for the single-car ones) -- e.g. forcing live for spot-checks without
+# affecting batch inventory runs, or vice versa. Set to "legacy" to force
+# the live/cache provider unconditionally; any other value (including
+# unset, or the now-redundant "market_collector") takes the default path
+# above.
+def _build_market_provider(*, delay: float, refresh: bool, env_var: str, log_prefix: str):
+    def _legacy():
+        # A persistent, cache-first market layer: fresh (source, brand, model)
+        # pools are reused across runs with ZERO HTTP; misses/expiries fetch
+        # live and update the cache. `refresh=true` forces a live refresh.
+        return PersistentCacheProvider(delay=delay, force_refresh=refresh)
+
+    if refresh or os.environ.get(env_var) == "legacy":
+        return _legacy()
+    try:
+        return MarketCollectorProvider()
+    except Exception as exc:  # noqa: BLE001 - degrade, never crash the endpoint
+        print(f"[v0][{log_prefix}] MarketCollectorProvider unavailable ({exc!r}), "
+              f"falling back to PersistentCacheProvider.")
+        return _legacy()
+
+
+def _build_inventory_provider(payload: "InventoryAnalyzePayload"):
+    return _build_market_provider(
+        delay=payload.delay, refresh=payload.refresh,
+        env_var="INVENTORY_MARKET_PROVIDER", log_prefix="inventory",
+    )
+
+
+def _build_compare_provider(payload: "CarPayload"):
+    return _build_market_provider(
+        delay=payload.delay, refresh=payload.refresh,
+        env_var="COMPARE_MARKET_PROVIDER", log_prefix="compare",
+    )
+
+
 @app.post("/api/inventory/analyze/stream")
 def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingResponse:
-    # A persistent, cache-first market layer: fresh (source, brand, model) pools
-    # are reused across runs with ZERO HTTP; misses/expiries fetch live and
-    # update the cache. `refresh=true` forces a live refresh of every model.
-    provider = PersistentCacheProvider(delay=payload.delay, force_refresh=payload.refresh)
+    provider = _build_inventory_provider(payload)
 
     def gen():
         try:
@@ -225,9 +288,12 @@ def inventory_analyze_stream(payload: InventoryAnalyzePayload) -> StreamingRespo
 # --------------------------------------------------------------------------- #
 @app.post("/api/compare")
 def compare(payload: CarPayload) -> dict:
+    provider = _build_compare_provider(payload)
     result = compare_single_car(
-        _to_input(payload), max_pages=payload.max_pages, delay=payload.delay
+        _to_input(payload), max_pages=payload.max_pages, delay=payload.delay,
+        provider=provider,
     )
+    provider.flush()
     return _json_safe(result)
 
 
@@ -245,6 +311,7 @@ def _sse(payload: dict) -> str:
 @app.post("/api/compare/stream")
 def compare_stream(payload: CarPayload) -> StreamingResponse:
     inp = _to_input(payload)
+    provider = _build_compare_provider(payload)
 
     def gen():
         try:
@@ -271,7 +338,8 @@ def compare_stream(payload: CarPayload) -> StreamingResponse:
             )
 
             yield _sse({"stage": "searching_autobazar", "label": "Searching Autobazar.eu"})
-            ab_df, ab_err = retrieve_autobazar(car, payload.max_pages, payload.delay)
+            ab_rr = provider.retrieve("autobazar", car, payload.max_pages)
+            ab_df, ab_err = ab_rr.df, ab_rr.err
             yield _sse(
                 {
                     "stage": "autobazar_done",
@@ -282,7 +350,8 @@ def compare_stream(payload: CarPayload) -> StreamingResponse:
             )
 
             yield _sse({"stage": "searching_bazos", "label": "Searching Bazos.sk"})
-            bz_df, bz_err = retrieve_bazos(car, payload.max_pages, payload.delay)
+            bz_rr = provider.retrieve("bazos", car, payload.max_pages)
+            bz_df, bz_err = bz_rr.df, bz_rr.err
             yield _sse(
                 {
                     "stage": "bazos_done",
@@ -301,6 +370,8 @@ def compare_stream(payload: CarPayload) -> StreamingResponse:
             yield _sse({"stage": "result", "label": "Done", "result": _json_safe(result)})
         except Exception as e:  # noqa: BLE001 - surface any engine error to the client
             yield _sse({"stage": "error", "label": "Comparison failed", "message": str(e)})
+        finally:
+            provider.flush()
 
     return StreamingResponse(
         gen(),

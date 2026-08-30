@@ -426,7 +426,7 @@ def test_slow_model_does_not_stop_the_run():
 # --------------------------------------------------------------------------- #
 def _mk_inv_car(brand="VW", model="Golf"):
     from single_car import SingleCarInput
-    return SingleCarInput(brand=brand, model=model, year=2016, km=150000, price_eur=9000)
+    return SingleCarInput(brand=brand, model=model, year=2016, km=150000, price=9000)
 
 
 def test_persistent_cache_defers_save_to_flush(tmp_path_str=None):

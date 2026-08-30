@@ -41,7 +41,7 @@ import pandas as pd
 from phase6_validate import (
     InvCar, load_inventory, to_invcar,
     retrieve_autobazar, retrieve_bazos,
-    match, adaptive_estimate,
+    match, adaptive_estimate, retained_pool,
     MIN_USABLE, BROAD, fmt, top_links,
     MILEAGE_RANK,
 )
@@ -88,35 +88,57 @@ def _mileage_headline(usable: list[dict]) -> dict:
     return max(usable, key=lambda e: e["comparable_count"]).get("mileage", {}) or {}
 
 
+# Tier reached -> baseline confidence. Ordered loosest -> tightest so
+# `max()` over ranks picks the tightest tier reached across both sources.
+_TIER_RANK = {"broad": 1, "moderate": 2, "strict": 3}
+_BASELINE_BY_RANK = {1: "LOW", 2: "MEDIUM", 3: "HIGH"}
+
+
 def confidence_flag(car: InvCar, ab: dict, bz: dict) -> tuple[str, str]:
     """
-    Return (FLAG, human-readable reasons). Combines transparent factors: sample
-    sufficiency, data completeness, cross-source agreement, and MILEAGE
-    SIMILARITY (how well the comparable-mileage distribution matches the
-    submitted car). It does NOT feed back into any price/median calculation.
+    Return (FLAG, human-readable reasons). It does NOT feed back into any
+    price/median calculation.
 
-    Mileage rule (see phase6_validate.mileage_similarity for the thresholds):
-      * HIGH requires GOOD mileage evidence in every usable source.
-      * A LARGE / VERY_LARGE measured gap is a serious quality problem -> LOW,
-        and always prevents HIGH.
-      * MODERATE or UNKNOWN mileage caps the result at MEDIUM (never HIGH), and
-        is explained. Mileage alone NEVER forces INSUFFICIENT.
+    2026-08-25: confidence is primarily TIER-driven, not sample-count-driven.
+    INSUFFICIENT is reserved for literally zero comparables anywhere (neither
+    source matched at any tolerance tier) -- any source with >=1 match, at
+    any tier, gives a real baseline instead:
+        best tier reached (either source) == strict   -> HIGH
+        best tier reached (either source) == moderate -> MEDIUM
+        best tier reached (either source) == broad     -> LOW
+    "best tier reached" takes the tightest tier across BOTH sources, so one
+    source alone reaching STRICT is enough for a HIGH baseline even if the
+    other source is empty or only reaches BROAD.
+
+    Data completeness, cross-source agreement, and MILEAGE SIMILARITY (how
+    well the comparable-mileage distribution matches the submitted car)
+    still cap that baseline DOWNWARD, exactly the role they always played --
+    they decide whether the tier-earned baseline is honored or capped, never
+    whether a level is reachable in the first place, and never raise it:
+      * A LARGE / VERY_LARGE mileage gap, large source disagreement, or
+        incomplete inventory/comparable data is a serious quality problem ->
+        hard-capped at LOW (see phase6_validate.mileage_similarity for the
+        mileage thresholds).
+      * MODERATE or UNKNOWN mileage soft-caps a HIGH baseline down to MEDIUM
+        (never all the way to LOW on its own).
     """
     ab_n, bz_n = ab["comparable_count"], bz["comparable_count"]
-    ab_ok, bz_ok = ab_n >= MIN_USABLE, bz_n >= MIN_USABLE
-    usable = [e for e, ok in ((ab, ab_ok), (bz, bz_ok)) if ok]
+    ab_has, bz_has = ab_n > 0, bz_n > 0
+    usable = [e for e, has in ((ab, ab_has), (bz, bz_has)) if has]
 
     if not usable:
-        return "INSUFFICIENT", (
-            f"no source reaches {MIN_USABLE} comparables (AB n={ab_n}, BZ n={bz_n})"
-        )
+        return "INSUFFICIENT", "no comparables found for this car at any tolerance tier"
+
+    best_rank = max(_TIER_RANK[e["tier_used"]] for e in usable)
+    baseline = _BASELINE_BY_RANK[best_rank]
+    best_tier_name = {v: k for k, v in _TIER_RANK.items()}[best_rank]
 
     miss = missing_critical(car)
     inv_complete = not miss
     best_unknown = min(e["unknown_year_km_frac"] for e in usable)
     comp_complete = best_unknown <= UNKNOWN_FRAC_MAX
 
-    both_usable = ab_ok and bz_ok
+    both_usable = ab_has and bz_has
     spread = median_spread_pct(ab["market_median"], bz["market_median"])
     if both_usable and spread is not None:
         agreement = ("agree" if spread <= AGREE_MAX
@@ -126,29 +148,15 @@ def confidence_flag(car: InvCar, ab: dict, bz: dict) -> tuple[str, str]:
         agreement = "single"  # only one usable source: cannot corroborate
 
     # Mileage similarity across the usable sources (transparent, per-source).
-    mile_cats = [e.get("mileage_match", "unknown") for e in usable]
-    all_good_mileage = all(m == "good" for m in mile_cats)
-    worst_mile_rank = max(MILEAGE_RANK.get(m, 1.5) for m in mile_cats)
+    worst_mile_rank = max(MILEAGE_RANK.get(e.get("mileage_match", "unknown"), 1.5) for e in usable)
     headline_mile = _mileage_headline(usable)
     headline_cat = headline_mile.get("category", "unknown")
     headline_note = headline_mile.get("note", "")
 
     best_n = max(ab_n, bz_n)
-    reasons: list[str] = []
+    tier_note = f"tier reached: {best_tier_name} (best sample n={best_n})"
 
-    # HIGH: corroborated by both sources, they agree, data complete, AND the
-    # comparable mileage genuinely matches the car in every usable source.
-    if (both_usable and agreement == "agree" and inv_complete
-            and comp_complete and all_good_mileage):
-        reasons = [
-            f"both sources usable (AB {ab_n}/BZ {bz_n})",
-            f"median spread {spread:.0f}% <= {AGREE_MAX:.0f}%",
-            "inventory + comparable data complete",
-            "mileage closely matches comparable listings",
-        ]
-        return "HIGH", "; ".join(reasons)
-
-    # LOW: any serious quality problem, incl. a large/very-large mileage gap.
+    # Hard cap at LOW: any serious quality problem, regardless of baseline.
     low_hits = []
     if agreement == "large":
         low_hits.append(f"large source disagreement {spread:.0f}%")
@@ -159,21 +167,31 @@ def confidence_flag(car: InvCar, ab: dict, bz: dict) -> tuple[str, str]:
     if worst_mile_rank >= MILEAGE_RANK["large"]:
         low_hits.append(headline_note or "comparable mileage substantially different from the submitted car")
     if low_hits:
-        low_hits.append(f"best sample n={best_n}")
+        low_hits.append(tier_note)
         return "LOW", "; ".join(low_hits)
 
-    # MEDIUM: usable but not corroborated / minor disagreement / mileage not a
-    # tight match (moderate gap or unverifiable mileage). Never HIGH here.
-    if agreement == "single":
+    # Soft cap at MEDIUM: mileage not a tight match (moderate gap or
+    # unverifiable) pulls a HIGH baseline down one level. Never touches an
+    # already-MEDIUM-or-LOW baseline (nothing left to cap it to).
+    if baseline == "HIGH" and headline_cat in ("moderate", "unknown"):
+        note = headline_note or (
+            "comparable mileage somewhat different from the submitted car"
+            if headline_cat == "moderate" else "comparable mileage could not be verified"
+        )
+        return "MEDIUM", "; ".join([note, tier_note])
+
+    # No cap triggered -- report the tier-earned baseline, with corroboration
+    # and mileage context for transparency.
+    reasons = [tier_note]
+    if both_usable and agreement == "agree":
+        reasons.append(f"both sources usable (AB {ab_n}/BZ {bz_n}); median spread {spread:.0f}% <= {AGREE_MAX:.0f}%")
+    elif agreement == "single":
         reasons.append(f"single usable source (AB {ab_n}/BZ {bz_n}); no cross-check")
     elif agreement == "meaningful":
         reasons.append(f"moderate source disagreement {spread:.0f}%")
-    if headline_cat == "moderate":
-        reasons.append(headline_note or "comparable mileage somewhat different from the submitted car")
-    elif headline_cat == "unknown":
-        reasons.append("comparable mileage could not be verified")
-    reasons.append(f"sample n={best_n}, data complete")
-    return "MEDIUM", "; ".join(reasons)
+    if headline_cat == "good":
+        reasons.append("mileage closely matches comparable listings")
+    return baseline, "; ".join(reasons)
 
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +210,15 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
     """
     ab_est, ab_matched = adaptive_estimate(car, ab_df)
     bz_est, bz_matched = adaptive_estimate(car, bz_df)
+
+    # Parallel, additive view: the disjoint STRICT/MODERATE-only/BROAD-only
+    # retained pool (see retained_pool's docstring). Not yet used for pricing
+    # or confidence -- adaptive_estimate above remains the sole production
+    # estimator. This only surfaces per-tier counts for inspection/UI; the
+    # full tagged DataFrames are available by calling retained_pool(car, df)
+    # directly (same inputs any caller here already has).
+    ab_retained = retained_pool(car, ab_df)
+    bz_retained = retained_pool(car, bz_df)
 
     flag, reasons = confidence_flag(car, ab_est, bz_est)
     spread = median_spread_pct(ab_est["market_median"], bz_est["market_median"])
@@ -232,6 +259,13 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         "ab_comp_km_p75": ab_est["mileage"]["comp_km_p75"],
         "ab_mileage_note": ab_est["mileage"]["note"],
 
+        # --- Autobazar retained pool (disjoint STRICT/MODERATE-only/BROAD-only;
+        # observational only, not yet used for pricing -- see retained_pool()) ---
+        "ab_n_strict": ab_retained["n_strict"],
+        "ab_n_moderate": ab_retained["n_moderate"],
+        "ab_n_broad": ab_retained["n_broad"],
+        "ab_n_retained": ab_retained["n_total"],
+
         # --- Bazos (independent) ---
         "bz_tier": bz_est["tier_used"],
         "bz_comparable_count": bz_est["comparable_count"],
@@ -245,6 +279,13 @@ def evaluate_car(car: InvCar, ab_df: pd.DataFrame, bz_df: pd.DataFrame,
         "bz_comp_km_p25": bz_est["mileage"]["comp_km_p25"],
         "bz_comp_km_p75": bz_est["mileage"]["comp_km_p75"],
         "bz_mileage_note": bz_est["mileage"]["note"],
+
+        # --- Bazos retained pool (disjoint STRICT/MODERATE-only/BROAD-only;
+        # observational only, not yet used for pricing -- see retained_pool()) ---
+        "bz_n_strict": bz_retained["n_strict"],
+        "bz_n_moderate": bz_retained["n_moderate"],
+        "bz_n_broad": bz_retained["n_broad"],
+        "bz_n_retained": bz_retained["n_total"],
 
         # --- cross-source (shown, never merged into one price) ---
         "median_spread_pct": round(spread, 1) if spread is not None else None,

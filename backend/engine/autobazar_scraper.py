@@ -82,6 +82,25 @@ class BlockedError(RuntimeError):
     """
 
 
+class NotFoundError(BlockedError):
+    """Raised when a specific URL returns HTTP 404 or 410 -- a definitive,
+    terminal "this page does not exist" response, not a block/rate-limit
+    signal. IS a BlockedError subclass -- deliberately, so every existing
+    `except BlockedError` call site (search-page fetches, where a 404/410
+    would be a genuine anomaly, not "this listing is gone") keeps stopping
+    and reporting exactly as before, with no call-site changes needed.
+    Detail-page callers that want the precise "confirmed gone" outcome
+    (record it and never retry, rather than stop-and-report) should catch
+    NotFoundError specifically, BEFORE any broader `except BlockedError`.
+
+    2026-08-24 fix: fetch() previously funneled 404/410 into the generic
+    `status != 200` -> BlockedError fallback, indistinguishable from an
+    actual block. Detail-page adapters caught BlockedError as a transient
+    failure and left the item in the capture backlog to retry forever, so a
+    genuinely removed listing could never drain from the queue.
+    """
+
+
 # --------------------------------------------------------------------------- #
 # URL construction
 # --------------------------------------------------------------------------- #
@@ -205,6 +224,11 @@ def fetch(url: str, timeout: int = 30, *, brand: str = "", model: str = "",
             f"Stopping — no CAPTCHA/Cloudflare bypass will be attempted."
         )
 
+    # 3) Definitive "gone" -- distinct from a block, and from the generic
+    # fallback below: a removed/expired listing, not a failure to retry.
+    if status in (404, 410):
+        raise NotFoundError(f"{url!r} returned HTTP {status} (listing not found/gone).")
+
     if status != 200:
         raise BlockedError(
             f"Unexpected HTTP {status} for {url!r} (x-bot-request={bot_header!r})."
@@ -292,17 +316,50 @@ def _record_to_row(rec: dict) -> dict:
         # Prefer explicit yearValue; fall back to a year-looking field if needed.
         "year": clean_year(rec.get("yearValue")),
         "km": clean_int(rec.get("mileage")),
-        # finalPrice/priceCurrent mirror price; take the first non-null.
+        # finalPrice/priceCurrent are NOT interchangeable mirrors of price --
+        # verified against 26,971 real collected records (2026-08-19): price
+        # disagrees with finalPrice in 27.3% of them, in two distinct ways:
+        #   (1) price is a pre-discount/list price (finalPrice ~3-30% lower)
+        #       -- finalPrice is the actual current advertised price.
+        #   (2) for listings aggregated from Autobazar's Czech-market sister
+        #       site (confirmed via raw_json.location.parentNames containing
+        #       "Česká republika"), price is denominated in Czech Koruna
+        #       while finalPrice/priceCurrent are already EUR-converted --
+        #       ratio ~24.2-24.3x, matching the real CZK/EUR exchange rate,
+        #       not a discount. Using raw `price` here previously produced
+        #       listings priced at >EUR 1,000,000 for ordinary cars.
+        # finalPrice and priceCurrent agreed in every observed case where
+        # both were present, so either is a safe primary; finalPrice is
+        # preferred as the more explicitly-named field, priceCurrent as a
+        # fallback, and raw price only as a last resort when neither of the
+        # normalized fields is present (rare: 8/26,971 observed records).
         "price": clean_int(
-            rec.get("price")
-            if rec.get("price") is not None
-            else rec.get("finalPrice")
+            rec.get("finalPrice")
+            if rec.get("finalPrice") is not None
+            else rec.get("priceCurrent")
+            if rec.get("priceCurrent") is not None
+            else rec.get("price")
         ),
         "fuel": clean_text(rec.get("fuelValue")),
         "transmission": clean_text(rec.get("gearboxValue")),
         "power": clean_int(rec.get("enginePower")),  # kW
         "body_type": clean_text(rec.get("bodyworkValue")),
         "listing_date": clean_text(rec.get("clientUpdatedAt")),
+        # clientUpdatedAt (== listing_date above, == sitemap lastmod) is a
+        # bump/touch signal, NOT a reliable original-posting date -- verified
+        # against 27,028 real collected records (2026-08-19): records
+        # captured in the same minute had near-identical clientUpdatedAt
+        # regardless of true listing age. clientCreatedAt (falling back to
+        # publishUp, which matched it in 27,027/27,028 = 99.996% of those
+        # same records) instead spans 47 distinct days back to 2015-01-21 --
+        # the shape of genuine, varied posting dates. Stored as a first-class
+        # field for later age analysis only; NOT used anywhere as a capture
+        # or change-detection signal.
+        "client_created_at": clean_text(
+            rec.get("clientCreatedAt")
+            if rec.get("clientCreatedAt") is not None
+            else rec.get("publishUp")
+        ),
         "url": url,
     }
 
