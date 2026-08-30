@@ -733,21 +733,38 @@ def rule_generation(car: InvCar, row) -> str:
     return MATCH if row_gen == car_gen else MISMATCH
 
 
-def rule_fuel(car: InvCar, row) -> str:
+def rule_fuel(car: InvCar, row, require_known: bool = False) -> str:
+    """`require_known` (2026-08-30, same pattern as rule_variant/rule_
+    transmission/rule_year): fuel has no require_same_* on/off toggle --
+    it's always checked when car.fuel is known, at every tier including
+    BROAD -- but unlike km/power, an unknown LISTING fuel was passing
+    STRICT/MODERATE unchallenged via "unknown never fails". STRICT/
+    MODERATE now require it to be known; BROAD is untouched (require_known
+    left False there)."""
     if not car.fuel:
         return NA
     val = _clean(row["fuel"])
     if val is None:
-        return UNKNOWN
+        return MISMATCH if require_known else UNKNOWN
     return MATCH if str(val).lower() == car.fuel.lower() else MISMATCH
 
 
-def rule_variant(car: InvCar, row, require: bool) -> str:
+def rule_variant(car: InvCar, row, require: bool, require_known: bool = False) -> str:
+    """`require_known` (2026-08-30, mirrors rule_year's require_known_year):
+    STRICT/MODERATE claim to enforce "same engine/variant", but without this
+    an UNKNOWN listing variant passed through via "unknown never fails" the
+    same as everywhere else -- a bare-title listing with no engine info at
+    all (e.g. a Bazoš ad that's just "Škoda octavia", or ANY Autobazar
+    listing today, since Autobazar rows never get a variant_engine value at
+    all -- see bridge/to_display_fields.py's _load_autobazar_incremental)
+    could land in STRICT/MODERATE despite the variant never actually being
+    verified. See the 2026-08-30 live-recall audit that caught this (a
+    manual-transmission Autobazar Octavia landing in strict/moderate)."""
     if not require or not car.variant_engine:
         return NA
     val = _clean(row["variant_engine"])
     if val is None:
-        return UNKNOWN
+        return MISMATCH if require_known else UNKNOWN
     return MATCH if str(val).upper() == car.variant_engine.upper() else MISMATCH
 
 
@@ -763,12 +780,16 @@ def rule_year(car: InvCar, row, tol: int, require_known: bool = False) -> str:
     return MATCH if abs(val - car.year) <= tol else MISMATCH
 
 
-def rule_km(car: InvCar, row, pct: float, floor: int) -> str:
+def rule_km(car: InvCar, row, pct: float, floor: int, require_known: bool = False) -> str:
+    """`require_known` (2026-08-30, same pattern as rule_fuel above) -- a
+    listing with no km extracted was passing STRICT/MODERATE's mileage
+    check unchallenged via "unknown never fails". STRICT/MODERATE now
+    require it to be known; BROAD is untouched."""
     if car.km is None:
         return NA
     val = _int(row["km"])
     if val is None:
-        return UNKNOWN
+        return MISMATCH if require_known else UNKNOWN
     window = max(int(car.km * pct), floor)
     return MATCH if abs(val - car.km) <= window else MISMATCH
 
@@ -782,12 +803,20 @@ def rule_power(car: InvCar, row, tol: Optional[int]) -> str:
     return MATCH if abs(val - car.power_kw) <= tol else MISMATCH
 
 
-def rule_transmission(car: InvCar, row, require: bool) -> str:
+def rule_transmission(car: InvCar, row, require: bool, require_known: bool = False) -> str:
+    """`require_known` (2026-08-30, mirrors rule_variant's own param above) --
+    same "unknown never fails" gap: a listing with no transmission extracted
+    at all was passing STRICT/MODERATE's "transmission must match" check
+    unchallenged. Business rule (2026-08-30): a KNOWN-different transmission
+    can only ever be a BROAD match, never moderate or strict -- an unknown
+    transmission that turns out to actually differ must not silently land
+    in strict/moderate either, so STRICT/MODERATE require the value to be
+    known, not merely "match if known"."""
     if not require or not car.transmission:
         return NA
     val = _clean(row["transmission"])
     if val is None:
-        return UNKNOWN
+        return MISMATCH if require_known else UNKNOWN
     return MATCH if str(val).lower() == car.transmission.lower() else MISMATCH
 
 
@@ -876,12 +905,12 @@ def evaluate(car: InvCar, row, rules: RuleSet) -> tuple[bool, dict]:
         "brand": rule_brand(car, row),
         "model": rule_model_soft(car, row),
         "generation": rule_generation(car, row),
-        "fuel": rule_fuel(car, row),
-        "variant": rule_variant(car, row, rules.require_same_variant),
+        "fuel": rule_fuel(car, row, rules.require_known_fuel),
+        "variant": rule_variant(car, row, rules.require_same_variant, rules.require_known_variant),
         "year": rule_year(car, row, rules.year_tol, rules.require_known_year),
-        "km": rule_km(car, row, rules.km_pct, rules.km_floor),
+        "km": rule_km(car, row, rules.km_pct, rules.km_floor, rules.require_known_km),
         "power": rule_power(car, row, rules.power_tol_kw),
-        "transmission": rule_transmission(car, row, rules.require_same_transmission),
+        "transmission": rule_transmission(car, row, rules.require_same_transmission, rules.require_known_transmission),
         "drivetrain": rule_drivetrain(car, row, rules.require_same_drivetrain),
         # body_type is informational only (2026-08-28 business sign-off: "it
         # does not matter as much... it can be even strict [i.e. never a

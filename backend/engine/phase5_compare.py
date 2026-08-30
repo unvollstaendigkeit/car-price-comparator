@@ -82,18 +82,55 @@ class RuleSet:
     # (2026-08-28, business sign-off: "if fwd vs awd not a match, it can still be
     # moderate or broad" -- i.e. only STRICT blocks on a known mismatch).
     require_same_drivetrain: bool = False
+    # When True, a listing with an UNKNOWN variant/transmission is rejected
+    # rather than passed through via "unknown never fails" (2026-08-30, same
+    # gap require_known_year already closes for year -- see rule_variant/
+    # rule_transmission's own docstrings for the live-recall audit that
+    # caught this: a manual-transmission car with no transmission extracted
+    # was landing in STRICT/MODERATE, in violation of the business rule
+    # "a different transmission can be broad, never moderate or strict" --
+    # an UNKNOWN transmission that's secretly different is the same failure
+    # by another name). STRICT and MODERATE both set these; BROAD doesn't
+    # need to (require_same_variant/require_same_transmission are already
+    # False there, which makes rule_variant/rule_transmission return NA
+    # regardless of require_known).
+    require_known_variant: bool = False
+    require_known_transmission: bool = False
+    # Same pattern, extended to fuel/km (2026-08-30, explicit user
+    # requirement: "STRICT/MODERATE should also absolutely require engine,
+    # mileage, year, fuel, transmission, model"). Unlike variant/
+    # transmission, fuel and km have no require_same_*/require_same_km
+    # on-off toggle -- they're always CHECKED (when the inventory car's own
+    # value is known) at every tier including BROAD; require_known_fuel/
+    # require_known_km only control whether an unknown LISTING value is
+    # tolerated (STRICT/MODERATE: no) or passed through (BROAD: yes, left
+    # False there). NOTE: Bazoš's captured pool has fuel/km unextracted on
+    # ~70-75% of rows (Autobazar: <1%) -- this materially shrinks how much
+    # of the Bazoš pool can ever reach STRICT/MODERATE going forward;
+    # adaptive_estimate's existing tier-fallback (STRICT -> MODERATE ->
+    # BROAD when a tighter tier lacks enough comparables) absorbs this
+    # gracefully rather than failing, but BROAD will be selected noticeably
+    # more often as a result. Brand/model are NOT given an equivalent flag:
+    # their only UNKNOWN path is an empty `title`, and 0 of ~313k captured
+    # listings (both sources) have one -- already effectively 100% enforced
+    # today, so no behavior to change there.
+    require_known_fuel: bool = False
+    require_known_km: bool = False
 
     def describe(self) -> str:
-        km_desc = f"km +/-{self.km_floor:,} (flat)" if self.km_pct == 0 else (
-            f"km +/-{int(self.km_pct*100)}% (floor +/-{self.km_floor:,})"
-        )
+        km_desc = (f"km +/-{self.km_floor:,} (flat)" if self.km_pct == 0 else
+                    f"km +/-{int(self.km_pct*100)}% (floor +/-{self.km_floor:,})")
+        km_desc += " (must be known)" if self.require_known_km else ""
         parts = [
             f"year +/-{self.year_tol}" + (" (must be known)" if self.require_known_year else ""),
             km_desc,
-            ("variant must match" if self.require_same_variant else "any engine of model"),
+            ("variant must match" + (" (must be known)" if self.require_known_variant else "")
+             if self.require_same_variant else "any engine of model"),
             (f"power +/-{self.power_tol_kw}kW (both-known)" if self.power_tol_kw is not None else "power ignored"),
-            ("transmission must match (both-known)" if self.require_same_transmission else "transmission ignored"),
+            (("transmission must match" + (" (must be known)" if self.require_known_transmission else " (both-known)"))
+             if self.require_same_transmission else "transmission ignored"),
             ("drivetrain must match (both-known)" if self.require_same_drivetrain else "drivetrain ignored"),
+            ("fuel must be known" if self.require_known_fuel else "fuel: both-known only"),
         ]
         return "; ".join(parts)
 
@@ -118,6 +155,10 @@ STRICT = RuleSet(
     require_same_transmission=True,
     require_known_year=True,
     require_same_drivetrain=True,
+    require_known_variant=True,
+    require_known_transmission=True,
+    require_known_fuel=True,
+    require_known_km=True,
 )
 
 # MODERATE sits between STRICT and BROAD. Its non-km tolerances are data-tuned.
@@ -137,6 +178,10 @@ MODERATE = RuleSet(
     require_same_variant=True,
     require_same_transmission=True,
     require_known_year=True,
+    require_known_variant=True,
+    require_known_transmission=True,
+    require_known_fuel=True,
+    require_known_km=True,
 )
 
 # BROAD is the only tier that drops engine/variant and transmission entirely --

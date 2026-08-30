@@ -533,11 +533,43 @@ def extract_engine(text: str) -> str | None:
 
 
 # ---- Transmission -------------------------------------------------------- #
-_TRANS_AUTO = re.compile(
-    r"\b(dsg|automat(?:ick[aáyé])?|automatic|tiptronic|s[\s\-]?tronic|"
-    r"steptronic|pdk|edc|dct|cvt|multitronic|cez\s*volant)\b", re.I,
+# Unambiguous automatic-gearbox brand/technology names -- these never appear
+# as an unrelated equipment mention, so no false-positive guard is needed.
+_TRANS_AUTO_UNAMBIGUOUS = re.compile(
+    r"\b(dsg|tiptronic|s[\s\-]?tronic|steptronic|pdk|edc|dct|cvt|"
+    r"multitronic|cez\s*volant)\b", re.I,
 )
-_TRANS_MANUAL = re.compile(r"\b(manu[aá]l(?:n[aáyé])?|manual|man\.)\b", re.I)
+# The bare word "automat"/"automatická"/"automatické" etc is NOT unambiguous:
+# Slovak/Czech ads routinely describe unrelated FEATURES this way --
+# "Automatická klimatizácia" (auto climate control), "Automatické svetlá"
+# (auto headlights), "ACC-automatická regulácia [vzdialenosti]" (adaptive
+# cruise), "Automatické doplnkové kúrenie" (auto auxiliary heating) -- and
+# those were being misread as evidence of an automatic GEARBOX (2026-08-30
+# bug: 3 confirmed-MANUAL real listings were mislabeled "Automatic" purely
+# because their equipment list mentioned one of these, despite each one also
+# explicitly stating a manual gearbox elsewhere in the same ad -- e.g.
+# "Manuál (6 st.)" / "Prevodovka: manuálna 6st." -- which the old code
+# never even reached, since _TRANS_AUTO always took precedence). See
+# _AUTO_FALSE_POSITIVE_FOLLOWERS below for how this is now filtered.
+_TRANS_AUTO_GENERIC = re.compile(r"\b(?:automat(?:ick[aáyé])?|automatic)\b", re.I)
+# Feature nouns that commonly follow "automat*" with NO relation to the
+# gearbox. If one of these appears within the next 0-2 words after an
+# "automat*" hit, that specific hit is describing the FEATURE, not the
+# transmission, and is discarded (a genuine gearbox mention -- e.g.
+# "automatická prevodovka", or a bare "automat" with nothing feature-like
+# after it -- is unaffected).
+_AUTO_FALSE_POSITIVE_FOLLOWERS = re.compile(
+    r"^(?:\w+\s+){0,2}"
+    r"(klimatiz|kl[ií]m|svetl|reflektor|tempomat|regul[aá]ci|k[uú]ren|"
+    r"okn|zrkadl|dver|clon|stierač|kufr|kufor|z[aá]mo?k|parkovac)",
+    re.I,
+)
+# "man." has its own trailing anchor (not \b) -- a period is a non-word
+# character, so \b can never match right after it; the combined-alternation
+# form this used to be (r"\b(...|man\.)\b") therefore never actually matched
+# "man." at all -- a pre-existing, unrelated dead-code bug noticed and fixed
+# in passing while rewriting this section (2026-08-30).
+_TRANS_MANUAL = re.compile(r"\b(manu[aá]l(?:n[aáyé])?|manual)\b|\bman\.", re.I)
 
 
 def extract_transmission(text: str) -> str | None:
@@ -545,12 +577,19 @@ def extract_transmission(text: str) -> str | None:
 
     Automatic markers (incl. DSG and other auto-gearbox brand names) take
     precedence, because an ad may mention both words; a listing that says 'DSG
-    automat' is automatic.
+    automat' is automatic. The generic "automat*" word is checked more
+    carefully than the unambiguous brand names -- see
+    _AUTO_FALSE_POSITIVE_FOLLOWERS's own comment -- since it very commonly
+    describes an unrelated feature instead of the gearbox itself.
     """
     if not text:
         return None
-    if _TRANS_AUTO.search(text):
+    if _TRANS_AUTO_UNAMBIGUOUS.search(text):
         return "Automatic"
+    for m in _TRANS_AUTO_GENERIC.finditer(text):
+        tail = text[m.end():m.end() + 60].lstrip()
+        if not _AUTO_FALSE_POSITIVE_FOLLOWERS.match(tail):
+            return "Automatic"
     if _TRANS_MANUAL.search(text):
         return "Manual"
     return None
