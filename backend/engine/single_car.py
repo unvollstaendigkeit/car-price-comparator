@@ -40,6 +40,7 @@ import pandas as pd
 # single car is normalized EXACTLY like an inventory row.
 from inventory_loader import (
     _parse_displacement,
+    _parse_drivetrain,
     _parse_engine_badge,
     _parse_power_kw,
     _parse_transmission,
@@ -92,6 +93,7 @@ def build_canonical_car(inp: SingleCarInput, row_index: int = -1) -> InvCar:
     disp = _parse_displacement(variant) if variant else None
     parsed_power, psrc = _parse_power_kw(variant) if variant else (None, "missing")
     parsed_trans = _parse_transmission(variant) if variant else None
+    drivetrain = _parse_drivetrain(variant) if variant else None
     engine = _parse_engine_badge(variant, disp) if variant else None
 
     if inp.power_kw is not None:
@@ -120,6 +122,7 @@ def build_canonical_car(inp: SingleCarInput, row_index: int = -1) -> InvCar:
         body_type=body_type,
         variant_raw=variant or None,
         power_source=power_source,
+        drivetrain=drivetrain,
     )
 
 
@@ -260,6 +263,7 @@ def compare_single_car(
     max_pages: int = 3,
     delay: float = 1.0,
     retrieved: Optional[tuple] = None,
+    provider=None,
 ) -> dict:
     """
     Retrieve comparables for one car from both sources and run the shared
@@ -268,15 +272,30 @@ def compare_single_car(
     `retrieved`, when supplied, is a pre-fetched
     (ab_df, ab_err, bz_df, bz_err) tuple; passing it skips live HTTP (used by
     tests to compare against inventory mode on identical market data).
+
+    `provider`, when supplied (and `retrieved` is not), is a market-data
+    transport implementing the same `.retrieve(source, car, pages,
+    deadline=None) -> RetrieveResult` interface inventory_run.py's
+    analyze_inventory already uses (see market_provider.py) -- e.g.
+    MarketCollectorProvider, the DB-backed read against market-collector's
+    continuously-updated capture ledger, instead of a live on-demand fetch.
+    Ignored if `retrieved` is given. Neither argument changes what this
+    function returns -- both are just different ways of supplying the same
+    (df, err) pair per source.
     """
     car = build_canonical_car(inp)
 
-    if retrieved is None:
+    if retrieved is not None:
+        ab_df, ab_err, bz_df, bz_err = retrieved
+    elif provider is not None:
+        ab_rr = provider.retrieve("autobazar", car, max_pages)
+        bz_rr = provider.retrieve("bazos", car, max_pages)
+        ab_df, ab_err = ab_rr.df, ab_rr.err or ""
+        bz_df, bz_err = bz_rr.df, bz_rr.err or ""
+    else:
         ab_df, ab_err = retrieve_autobazar(car, max_pages, delay)
         bz_df, bz_err = retrieve_bazos(car, max_pages, delay)
         ab_err, bz_err = ab_err or "", bz_err or ""
-    else:
-        ab_df, ab_err, bz_df, bz_err = retrieved
 
     row, ab_est, bz_est, ab_matched, bz_matched = evaluate_car(
         car, ab_df, bz_df, ab_err, bz_err
