@@ -64,6 +64,14 @@ export function mapLabel<T extends string | null | undefined>(value: T, labels: 
   return labels[value] ?? value
 }
 
+/** Translates a raw comma-joined field-name list (e.g. "year,fuel") via `labels` (t.fieldNames). */
+export function missingFieldsLabel(csv: string, labels: Record<string, string>): string {
+  return csv
+    .split(",")
+    .map((f) => labels[f.trim()] ?? f.trim())
+    .join(", ")
+}
+
 /**
  * undervaluation_pct sign convention (backend definition):
  *   positive -> cheaper than market median (a potential deal)

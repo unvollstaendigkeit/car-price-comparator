@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import type { AnalysisCarResult, AnalysisSourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtKm, fmtYear, tierLabel } from "@/lib/format"
+import { cn, fmtEur, fmtKm, fmtYear, mapLabel, missingFieldsLabel, tierLabel } from "@/lib/format"
+import { tierSentence } from "@/lib/tier-sentence"
 import { useT } from "@/lib/i18n/use-t"
 import { ConfidenceBadge, DiffBadge, MetaPill } from "@/components/badges"
 import { MileageBadge, MileageNotice } from "@/components/mileage-notice"
@@ -44,7 +45,7 @@ export function InventoryResultsTable({ cars }: { cars: AnalysisCarResult[] }) {
 function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
   const t = useT()
   const [open, setOpen] = useState(false)
-  const specs = [fmtYear(car.year), car.fuel, car.km != null ? fmtKm(car.km) : null]
+  const specs = [fmtYear(car.year), mapLabel(car.fuel, t.form.fuelLabels), car.km != null ? fmtKm(car.km) : null]
     .filter(Boolean)
     .join(" · ")
 
@@ -104,10 +105,9 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
           <SourceDetail title="Autobazar.eu" src={car.autobazar} submittedKm={car.km} />
           <SourceDetail title="Bazoš.sk" src={car.bazos} submittedKm={car.km} />
           <div className="md:col-span-2 flex flex-col gap-1 border-t border-border pt-3 text-[12px] text-faint">
-            <p>
-              <span className="text-muted">{t.inventory.resultsTable.whyConfidence}</span>
-              {car.confidence_reasons}
-            </p>
+            {[tierSentence(t, "Autobazar.eu", car.autobazar), tierSentence(t, "Bazoš.sk", car.bazos)]
+              .filter((s): s is string => s !== null)
+              .map((s) => <p key={s}>{s}</p>)}
             {car.median_spread_pct != null && (
               <p>
                 <span className="text-muted">{t.inventory.resultsTable.medianSpread}</span>
@@ -117,7 +117,7 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
             {car.missing_critical_fields && car.missing_critical_fields !== "none" && (
               <p>
                 <span className="text-muted">{t.inventory.resultsTable.missingFields}</span>
-                {car.missing_critical_fields}
+                {missingFieldsLabel(car.missing_critical_fields, t.fieldNames)}
               </p>
             )}
           </div>

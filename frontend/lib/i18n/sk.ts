@@ -6,6 +6,12 @@
  */
 export const sk = {
   locale: "sk",
+  fieldNames: {
+    year: "rok",
+    km: "nájazd",
+    price: "cena",
+    fuel: "palivo",
+  },
   header: {
     tagline: "Ocenenie ojazdeného auta na základe dvoch nezávislých trhovísk — vždy zobrazené oddelene, nikdy nezlúčené.",
   },

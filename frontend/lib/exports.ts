@@ -28,7 +28,7 @@ import type {
 import { buildXlsxBlob, type CellValue } from "./xlsx"
 import { confidenceWarningText, retrievalFailureText, sampleWarningText } from "./warning-copy"
 import type { Dictionary } from "./i18n/dictionaries"
-import { mapLabel, tierLabel } from "./format"
+import { mapLabel, missingFieldsLabel, tierLabel } from "./format"
 import { tierSentence } from "./tier-sentence"
 
 /* -------------------------------------------------------------------------- */
@@ -463,7 +463,7 @@ function inventorySheets(cars: AnalysisCarResult[], t: Dictionary): { name: stri
       car.model,
       car.variant ?? "",
       car.year,
-      car.fuel ?? "",
+      mapLabel(car.fuel, t.form.fuelLabels) ?? "",
       car.km,
       round(car.asking_price_eur),
       round(car.autobazar.median_eur),
@@ -532,7 +532,7 @@ function invDetail(t: Dictionary, car: AnalysisCarResult): string {
       s.comparable_count > 0
         ? `<div class="mline">${esc(t.exportInv.mileagePrefix)} ${esc(mileageLabel(t, s.mileage_match))}${
             s.comp_km_median != null
-              ? ` · ${esc(t.exportInv.compsPrefix)} ${km(s.comp_km_p25)}–${km(s.comp_km_p75)} (median ${km(s.comp_km_median)})`
+              ? ` · ${esc(t.exportInv.compsPrefix)} ${km(s.comp_km_p25)}–${km(s.comp_km_p75)} (${esc(t.exportInv.medianLabel.toLowerCase())} ${km(s.comp_km_median)})`
               : ""
           }</div>`
         : ""
@@ -544,13 +544,19 @@ function invDetail(t: Dictionary, car: AnalysisCarResult): string {
       ${links ? `<div class="links">${links}</div>` : ""}
     </div>`
   }
+  const reasonSentences = [
+    tierSentence(t, "Autobazar.eu", car.autobazar),
+    tierSentence(t, "Bazoš.sk", car.bazos),
+  ].filter((s): s is string => s !== null)
+  const reasons = reasonSentences.map((s) => `<div>${esc(s)}</div>`).join("")
+
   return `<td colspan="7"><div class="detail">
     ${src("Autobazar.eu", car.autobazar)}
     ${src("Bazoš.sk", car.bazos)}
     <div class="dmeta">
-      <div><span class="faint">${esc(t.exportInv.whyConfidence)}</span> ${esc(car.confidence_reasons || "—")}</div>
+      ${reasons}
       ${car.median_spread_pct != null ? `<div><span class="faint">${esc(t.exportInv.medianSpread)}</span> ${esc(t.exportInv.shownNeverAveraged(Math.abs(Math.round(car.median_spread_pct))))}</div>` : ""}
-      ${car.missing_critical_fields && car.missing_critical_fields !== "none" ? `<div><span class="faint">${esc(t.exportInv.missingFields)}</span> ${esc(car.missing_critical_fields)}</div>` : ""}
+      ${car.missing_critical_fields && car.missing_critical_fields !== "none" ? `<div><span class="faint">${esc(t.exportInv.missingFields)}</span> ${esc(missingFieldsLabel(car.missing_critical_fields, t.fieldNames))}</div>` : ""}
     </div>
   </div></td>`
 }
@@ -569,7 +575,7 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
 
   const rows = cars
     .map((car, i) => {
-      const specs = [yr(car.year), car.fuel, car.km != null ? km(car.km) : null]
+      const specs = [yr(car.year), mapLabel(car.fuel, t.form.fuelLabels), car.km != null ? km(car.km) : null]
         .filter((x) => x && x !== "—")
         .map(esc)
         .join(" · ")

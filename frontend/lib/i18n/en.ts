@@ -6,6 +6,15 @@
 export const en = {
   /** For standalone documents this dictionary generates (exported HTML reports) - sets <html lang>. */
   locale: "en",
+  // Keyed by the CANONICAL inventory field name (phase7_fullrun.py's
+  // missing_critical()) - used to translate missing_critical_fields, which
+  // arrives as a raw comma-joined list of these exact English names.
+  fieldNames: {
+    year: "year",
+    km: "mileage",
+    price: "price",
+    fuel: "fuel",
+  },
   header: {
     tagline: "Used-car valuation against two independent marketplaces — shown separately, never merged.",
   },
