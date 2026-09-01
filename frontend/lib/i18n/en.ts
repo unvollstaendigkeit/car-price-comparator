@@ -69,6 +69,21 @@ export const en = {
       Manual: "Manual",
       Automatic: "Automatic",
     },
+    // Keyed by the CANONICAL body_type value (inventory_normalizer.py's
+    // _BODY_MAP) - never translate the value itself, only the label.
+    bodyTypeLabels: {
+      SUV: "SUV",
+      Estate: "Estate",
+      Hatchback: "Hatchback",
+      MPV: "MPV",
+      Sedan: "Sedan",
+      Coupe: "Coupe",
+      Cabriolet: "Cabriolet",
+      Van: "Van",
+      Pickup: "Pickup",
+      Liftback: "Liftback",
+      Roadster: "Roadster",
+    },
     none: "—",
     footerHint: "Brand and model are required. The more fields you provide, the tighter the comparable match.",
     clear: "Clear",

@@ -2,27 +2,17 @@
 
 import type { CompareResult, SourceResult } from "@/lib/types"
 import { SOURCE_META } from "@/lib/types"
-import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, tierLabel } from "@/lib/format"
+import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, mapLabel } from "@/lib/format"
 import { exportSingleCarReport } from "@/lib/exports"
 import { confidenceWarningText } from "@/lib/warning-copy"
+import { tierSentence } from "@/lib/tier-sentence"
 import { useT } from "@/lib/i18n/use-t"
-import type { Dictionary } from "@/lib/i18n/dictionaries"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
 import { Disclosure } from "./disclosure"
 
 function isUsable(s: SourceResult): boolean {
   return !s.retrieval_issue && !s.insufficient && s.comparable_count > 0 && s.undervaluation_pct !== null
-}
-
-// Plain-language stand-in for the backend's "tier reached: strict (best
-// sample n=1)" style jargon: which match tier this source's estimate came
-// from, and how many comparable listings backed it.
-function tierSentence(t: Dictionary, label: string, s: SourceResult): string | null {
-  if (!s.tier || s.comparable_count === 0) return null
-  const tier = s.tier.toLowerCase()
-  const found = tier === "strict" ? t.result.strictMatchesFound : t.result.onlyTierMatchesFound(tierLabel(s.tier, t.tier))
-  return `${label}: ${found} — ${t.count.comparables(s.comparable_count)}.`
 }
 
 export function SingleCarResult({
@@ -54,7 +44,14 @@ export function SingleCarResult({
           ? t.result.coverage.onlyBazos
           : t.result.coverage.neither
 
-  const specLine = [fmtYear(car.year), car.fuel, fmtKm(car.km), car.body_type, vin, car.transmission]
+  const specLine = [
+    fmtYear(car.year),
+    mapLabel(car.fuel, t.form.fuelLabels),
+    fmtKm(car.km),
+    mapLabel(car.body_type, t.form.bodyTypeLabels),
+    vin,
+    mapLabel(car.transmission, t.form.transmissionLabels),
+  ]
     .filter(Boolean)
     .join(" · ")
 

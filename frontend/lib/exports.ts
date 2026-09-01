@@ -28,7 +28,8 @@ import type {
 import { buildXlsxBlob, type CellValue } from "./xlsx"
 import { confidenceWarningText, retrievalFailureText, sampleWarningText } from "./warning-copy"
 import type { Dictionary } from "./i18n/dictionaries"
-import { tierLabel } from "./format"
+import { mapLabel, tierLabel } from "./format"
+import { tierSentence } from "./tier-sentence"
 
 /* -------------------------------------------------------------------------- */
 /* Shared label helpers (wording mirrors the on-screen badges)                */
@@ -245,13 +246,21 @@ function sourceSection(
 function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
   const { car, sources, cross_source, confidence } = result
   const heading = `${car.brand} ${car.model}`
-  const specLine = [yr(car.year), car.fuel, km(car.km), car.transmission, car.body_type]
+  const specLine = [
+    yr(car.year),
+    mapLabel(car.fuel, t.form.fuelLabels),
+    km(car.km),
+    mapLabel(car.transmission, t.form.transmissionLabels),
+    mapLabel(car.body_type, t.form.bodyTypeLabels),
+  ]
     .filter((x) => x && x !== "—")
     .map(esc)
     .join(" · ")
 
-  const powerLine =
-    car.power_kw != null ? `${car.power_kw} kW${car.power_source ? ` (${esc(car.power_source)})` : ""}` : "—"
+  // No power_source suffix here (that was a raw internal provenance flag -
+  // "detected"/"manual entry"/etc, English, not shown on the results page
+  // either) - just the number, matching what the results page implies.
+  const powerLine = car.power_kw != null ? `${car.power_kw} kW` : "—"
 
   const agreement = cross_source.agreement ? t.exportSingle.agreement[cross_source.agreement] : ""
 
@@ -261,16 +270,27 @@ function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
     [f.model, esc(car.model)],
     [f.variant, esc(car.variant || car.variant_engine || "—")],
     [f.year, yr(car.year)],
-    [f.fuel, esc(car.fuel || "—")],
+    [f.fuel, esc(mapLabel(car.fuel, t.form.fuelLabels) || "—")],
     [f.mileage, km(car.km)],
     [f.askingPrice, eur(car.asking_price_eur)],
     [f.power, powerLine],
-    [f.transmission, esc(car.transmission || "—")],
-    [f.bodyType, esc(car.body_type || "—")],
+    [f.transmission, esc(mapLabel(car.transmission, t.form.transmissionLabels) || "—")],
+    [f.bodyType, esc(mapLabel(car.body_type, t.form.bodyTypeLabels) || "—")],
   ]
 
   const warnings = confidence.warnings.length
     ? `<ul class="warnings">${confidence.warnings.map((w) => `<li>${esc(confidenceWarningText(t, w))}</li>`).join("")}</ul>`
+    : ""
+
+  // Same info the results page shows in "Why this confidence?" - per-source
+  // tier sentences, NEVER confidence.reasons (raw backend prose with no
+  // translation, was leaking straight into the export before this).
+  const reasonSentences = [
+    tierSentence(t, "Autobazar.eu", sources.autobazar),
+    tierSentence(t, "Bazoš.sk", sources.bazos),
+  ].filter((s): s is string => s !== null)
+  const reasons = reasonSentences.length
+    ? `<ul class="reasons-list">${reasonSentences.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`
     : ""
 
   return `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"/>
@@ -303,6 +323,7 @@ function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
   .conf.LOW{color:var(--caution);border-color:var(--caution)}
   .conf.INSUFFICIENT{color:var(--faint)}
   .reasons{color:var(--muted);margin:12px 0 0}
+  .reasons-list{color:var(--muted);margin:10px 0 0;padding-left:18px}
   .warnings{margin:10px 0 0;padding-left:18px;color:var(--caution)}
   .agreement{margin-top:10px;color:var(--muted)}
   .src{border:1px solid var(--line);border-radius:10px;padding:18px 18px 8px;margin-bottom:18px}
@@ -347,7 +368,7 @@ function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
 
     <h2>${esc(t.exportSingle.overallAssessment)}</h2>
     <div><span class="conf ${confidence.flag}">${esc(confidenceLabel(t, confidence.flag))}</span></div>
-    ${confidence.reasons ? `<p class="reasons">${esc(confidence.reasons)}</p>` : ""}
+    ${reasons}
     ${warnings}
     ${
       agreement && cross_source.median_spread_pct !== null

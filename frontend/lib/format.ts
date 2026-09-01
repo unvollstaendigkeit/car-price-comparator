@@ -52,6 +52,19 @@ export function tierLabel(tier: string | null | undefined, labels: Record<string
 }
 
 /**
+ * Localizes a canonical wire value (fuel/transmission/body type - always
+ * English on the wire, e.g. "Manual", "Diesel", so backend matching never
+ * breaks) into its display label. Passes null/undefined straight through
+ * unchanged, so existing `|| "—"` / `.filter(Boolean)` call-site patterns
+ * keep working exactly as before. An unmapped value falls back to itself
+ * rather than disappearing.
+ */
+export function mapLabel<T extends string | null | undefined>(value: T, labels: Record<string, string>): T | string {
+  if (!value) return value
+  return labels[value] ?? value
+}
+
+/**
  * undervaluation_pct sign convention (backend definition):
  *   positive -> cheaper than market median (a potential deal)
  *   negative -> more expensive than market median
