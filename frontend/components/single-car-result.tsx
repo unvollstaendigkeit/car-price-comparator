@@ -4,6 +4,7 @@ import type { CompareResult, SourceResult } from "@/lib/types"
 import { SOURCE_META } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, tierLabel } from "@/lib/format"
 import { exportSingleCarReport } from "@/lib/exports"
+import { confidenceWarningText } from "@/lib/warning-copy"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
 import { Disclosure } from "./disclosure"
@@ -27,15 +28,7 @@ const AGREEMENT_COPY: Record<string, { label: string; cls: string; note: string 
 }
 
 function isUsable(s: SourceResult): boolean {
-  return !s.retrieval_error && !s.insufficient && s.comparable_count > 0 && s.undervaluation_pct !== null
-}
-
-// Backend warnings are prefixed "autobazar: ..." / "bazos: ..." — swap in the
-// full marketplace name so nothing reads like an internal shorthand.
-function prettifyWarning(w: string): string {
-  if (w.startsWith("autobazar: ")) return `${SOURCE_META.autobazar.label}: ${w.slice("autobazar: ".length)}`
-  if (w.startsWith("bazos: ")) return `${SOURCE_META.bazos.label}: ${w.slice("bazos: ".length)}`
-  return w
+  return !s.retrieval_issue && !s.insufficient && s.comparable_count > 0 && s.undervaluation_pct !== null
 }
 
 // Plain-language stand-in for the backend's "tier reached: strict (best
@@ -167,7 +160,7 @@ export function SingleCarResult({
                         <span aria-hidden className="mt-0.5">
                           ⚠
                         </span>
-                        <span>{prettifyWarning(w)}</span>
+                        <span>{confidenceWarningText(w)}</span>
                       </li>
                     ))}
                   </ul>

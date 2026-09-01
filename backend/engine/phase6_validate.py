@@ -754,12 +754,14 @@ def rule_variant(car: InvCar, row, require: bool, require_known: bool = False) -
     STRICT/MODERATE claim to enforce "same engine/variant", but without this
     an UNKNOWN listing variant passed through via "unknown never fails" the
     same as everywhere else -- a bare-title listing with no engine info at
-    all (e.g. a Bazoš ad that's just "Škoda octavia", or ANY Autobazar
-    listing today, since Autobazar rows never get a variant_engine value at
-    all -- see bridge/to_display_fields.py's _load_autobazar_incremental)
-    could land in STRICT/MODERATE despite the variant never actually being
-    verified. See the 2026-08-30 live-recall audit that caught this (a
-    manual-transmission Autobazar Octavia landing in strict/moderate)."""
+    all (e.g. a Bazoš ad that's just "Škoda octavia", or the small remainder
+    of Autobazar rows -- EVs and a few genuinely incomplete listings, ~5% as
+    of the 2026-08-30 engineCapacity fix -- where neither the title nor the
+    stored engineCapacity yields a usable displacement; see
+    bridge/to_display_fields.py's _autobazar_engine) could land in
+    STRICT/MODERATE despite the variant never actually being verified. See
+    the 2026-08-30 live-recall audit that caught this (a manual-transmission
+    Autobazar Octavia landing in strict/moderate)."""
     if not require or not car.variant_engine:
         return NA
     val = _clean(row["variant_engine"])
@@ -1208,7 +1210,9 @@ def estimate(car: InvCar, strict: pd.DataFrame, min_usable: int = MIN_USABLE) ->
     stats = price_stats(strict) if not strict.empty else {"count": 0}
     n = stats.get("count", 0)
     unk = _unknown_fraction(strict)
-    warnings: list[str] = []
+    # Structured (code-only, no prose) so the API boundary can render UI copy
+    # without ever forwarding backend wording - see single_car.py callers.
+    sample_warnings: list[dict] = []
     # Mileage similarity of the chosen-tier comparables vs the submitted car.
     # Computed from the ACTUAL comparable km distribution; never merged across
     # sources (this runs per source). Does not affect any price figure.
@@ -1243,18 +1247,14 @@ def estimate(car: InvCar, strict: pd.DataFrame, min_usable: int = MIN_USABLE) ->
         # Single-listing estimates are inherently fragile: one mispriced ad IS
         # the median. Never let them read as reliable.
         if n == 1:
-            warnings.append("single-listing estimate (n=1) - treat as indicative only")
+            sample_warnings.append({"code": "single_listing"})
             if res["confidence"] in ("medium", "high"):
                 res["confidence"] = "low"
 
         # Implausible market/asking ratio => the median is not a real comparable.
         ratio = (med / car.price) if car.price else None
         if ratio is not None and (ratio < _SANE_RATIO_LOW or ratio > _SANE_RATIO_HIGH):
-            warnings.append(
-                f"implausible market/asking ratio {ratio:.2f} "
-                f"(median EUR {med:,.0f} vs asking EUR {car.price:,.0f}); "
-                "likely a price parse/outlier artifact - estimate suppressed"
-            )
+            sample_warnings.append({"code": "implausible_ratio"})
             # Suppress the misleading numeric signal but keep the raw stats for audit.
             res["estimated_market_price"] = None
             res["price_difference"] = None
@@ -1265,7 +1265,7 @@ def estimate(car: InvCar, strict: pd.DataFrame, min_usable: int = MIN_USABLE) ->
         res["price_difference"] = None
         res["undervaluation_pct"] = None
 
-    res["sample_warning"] = "; ".join(warnings) if warnings else ""
+    res["sample_warnings"] = sample_warnings
     return res
 
 

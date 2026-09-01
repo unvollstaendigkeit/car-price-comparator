@@ -156,6 +156,21 @@ def _comparables(matched: pd.DataFrame) -> list[dict]:
     return out
 
 
+def _retrieval_issue(err: Optional[str]) -> Optional[dict]:
+    """Classify a raw retrieval-error string (built in phase6_validate for
+    logs/CSVs - never meant for a UI) into a UI-safe code. A bare 'no listings
+    at category ...' note is genuine market scarcity, not a failure, so it is
+    NOT surfaced as an issue here: zero comparables already reads correctly
+    downstream without implying something went wrong."""
+    if not err:
+        return None
+    if err.startswith("TIMEOUT"):
+        return {"code": "retrieval_failed", "reason": "timeout"}
+    if err.startswith("BLOCKED") or err.startswith("ERROR"):
+        return {"code": "retrieval_failed", "reason": "blocked"}
+    return None
+
+
 def _source_result(est: dict, matched: pd.DataFrame, err: str) -> dict:
     """Per-source block. Kept independent; never merged with the other source."""
     return {
@@ -169,7 +184,11 @@ def _source_result(est: dict, matched: pd.DataFrame, err: str) -> dict:
         "insufficient": est["insufficient_sample"],
         "unknown_year_km_frac": est["unknown_year_km_frac"],
         "outliers_trimmed": est["outliers_trimmed"],
-        "sample_warning": est.get("sample_warning") or "",
+        # Structured, code-only warnings - see _retrieval_issue docstring above
+        # for why raw backend error text never becomes UI copy.
+        "sample_warnings": est.get("sample_warnings") or [],
+        "retrieval_issue": _retrieval_issue(err),
+        # Raw text kept only for an explicit, opt-in "show error detail" affordance.
         "retrieval_error": err or None,
         # Mileage similarity of THIS source's comparables (never merged with the
         # other source). `mileage_match` is the category; `mileage` is the full
@@ -199,23 +218,22 @@ def _build_result(car: InvCar, row: dict, ab_est: dict, bz_est: dict,
 
     spread, band = _agreement(ab["median_asking_eur"], bz["median_asking_eur"])
 
-    # Explicit, transparent warnings (never silently swallowed).
-    warnings: list[str] = []
-    if ab["sample_warning"]:
-        warnings.append(f"autobazar: {ab['sample_warning']}")
-    if bz["sample_warning"]:
-        warnings.append(f"bazos: {bz['sample_warning']}")
-    if ab["retrieval_error"]:
-        warnings.append(f"autobazar retrieval: {ab['retrieval_error']}")
-    if bz["retrieval_error"]:
-        warnings.append(f"bazos retrieval: {bz['retrieval_error']}")
+    # Explicit, transparent warnings (never silently swallowed) - structured
+    # code-only objects. The frontend owns all wording; no backend string
+    # (exception text, ratios, jargon) ever crosses this boundary. See
+    # _retrieval_issue() above.
+    warnings: list[dict] = []
+    for src_key, s in (("autobazar", ab), ("bazos", bz)):
+        for w in s["sample_warnings"]:
+            warnings.append({**w, "source": src_key})
+        if s["retrieval_issue"]:
+            warnings.append({**s["retrieval_issue"], "source": src_key})
     ab_ok = not ab["insufficient"]
     bz_ok = not bz["insufficient"]
     if ab_ok and bz_ok and band == "large":
-        warnings.append(f"large source disagreement: medians differ by {spread:.0f}%")
-    if ab_ok != bz_ok:
-        only = "autobazar" if ab_ok else "bazos"
-        warnings.append(f"only {only} has a usable sample; no cross-source corroboration")
+        warnings.append({"code": "source_disagreement", "spread_pct": spread})
+    # (ab_ok != bz_ok is already conveyed in plain language by the frontend's
+    # own coverage sentence - no separate warning needed for it here.)
 
     insufficient = not (ab_ok or bz_ok)
 

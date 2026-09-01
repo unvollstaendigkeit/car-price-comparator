@@ -26,6 +26,7 @@ import type {
   SourceResult,
 } from "./types"
 import { buildXlsxBlob, type CellValue } from "./xlsx"
+import { confidenceWarningText, retrievalFailureText, sampleWarningText } from "./warning-copy"
 
 /* -------------------------------------------------------------------------- */
 /* Shared label helpers (wording mirrors the on-screen badges)                */
@@ -197,18 +198,25 @@ function comparablesRows(list: Comparable[]): string {
   </table>`
 }
 
-function sourceSection(title: string, host: string, s: SourceResult, asking: number | null): string {
-  if (s.retrieval_error) {
+function sourceSection(
+  title: string,
+  host: string,
+  sourceKey: "autobazar" | "bazos",
+  s: SourceResult,
+  asking: number | null,
+): string {
+  if (s.retrieval_issue) {
     return `<section class="src">
       <div class="src-head"><h3>${esc(title)}</h3><span class="host">${esc(host)}</span></div>
-      <p class="warn">Could not retrieve data: ${esc(s.retrieval_error)}</p>
+      <p class="warn">${esc(retrievalFailureText(sourceKey))}</p>
     </section>`
   }
   if (s.insufficient || s.comparable_count === 0 || s.undervaluation_pct === null) {
+    const sampleNotes = s.sample_warnings.map((w) => esc(sampleWarningText(w))).join(" ")
     return `<section class="src">
       <div class="src-head"><h3>${esc(title)}</h3><span class="host">${esc(host)}</span></div>
-      <p class="warn">Insufficient comparable listings for a reliable estimate (${s.comparable_count} found).
-      ${esc(s.sample_warning || "")}</p>
+      <p class="warn">Not enough comparable listings for a reliable estimate (${s.comparable_count} found).
+      ${sampleNotes}</p>
       ${comparablesRows(s.comparables)}
     </section>`
   }
@@ -222,7 +230,7 @@ function sourceSection(title: string, host: string, s: SourceResult, asking: num
       <span class="host">${esc(host)}</span>
       <span class="spacer"></span>
       ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier))}</span>` : ""}
-      <span class="pill">n=${s.comparable_count}</span>
+      <span class="pill">${s.comparable_count} comparable${s.comparable_count === 1 ? "" : "s"}</span>
     </div>
     <div class="metrics">
       <div class="metric"><span class="k">Market median</span><span class="v num">${eur(s.median_asking_eur)}</span></div>
@@ -276,7 +284,7 @@ function singleCarReportHtml(result: CompareResult): string {
   ]
 
   const warnings = confidence.warnings.length
-    ? `<ul class="warnings">${confidence.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>`
+    ? `<ul class="warnings">${confidence.warnings.map((w) => `<li>${esc(confidenceWarningText(w))}</li>`).join("")}</ul>`
     : ""
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
@@ -366,8 +374,8 @@ function singleCarReportHtml(result: CompareResult): string {
     }
 
     <h2>Autobazar.eu &amp; Bazoš.sk — shown separately, never merged</h2>
-    ${sourceSection("Autobazar.eu", "autobazar.eu", sources.autobazar, car.asking_price_eur)}
-    ${sourceSection("Bazoš.sk", "bazos.sk", sources.bazos, car.asking_price_eur)}
+    ${sourceSection("Autobazar.eu", "autobazar.eu", "autobazar", sources.autobazar, car.asking_price_eur)}
+    ${sourceSection("Bazoš.sk", "bazos.sk", "bazos", sources.bazos, car.asking_price_eur)}
 
     <div class="foot">
       Each marketplace is evaluated independently — Carval never blends them into a single number.

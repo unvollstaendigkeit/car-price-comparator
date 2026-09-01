@@ -2,6 +2,7 @@
 
 import type { SourceResult } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtPct, fmtPctPlain, tierLabel, valuationTone } from "@/lib/format"
+import { sampleWarningText } from "@/lib/warning-copy"
 import { ComparablesTable } from "./comparables-table"
 import { Disclosure } from "./disclosure"
 import { MileageNotice } from "./mileage-notice"
@@ -21,7 +22,7 @@ export function SourceCard({
   askingPriceEur?: number | null
 }) {
   const meta = SOURCE_META[sourceKey] ?? { name: sourceKey, host: "" }
-  const hasRetrievalError = Boolean(data.retrieval_error)
+  const hasRetrievalError = Boolean(data.retrieval_issue)
   // Only a genuinely empty result gets the placeholder. Any listing at all is
   // shown — a thin sample is surfaced with a concise caution, never hidden.
   const hasNoComparables = !hasRetrievalError && data.comparable_count === 0
@@ -60,12 +61,16 @@ export function SourceCard({
           <div>
             <p className="text-lg font-semibold text-danger">Couldn&apos;t fetch listings</p>
             <p className="mt-1 text-sm text-muted">
-              This is a temporary fetch problem, not an absence of comparable cars.
+              {data.retrieval_issue?.reason === "timeout"
+                ? `${meta.name} took too long to respond — this is a temporary fetch problem, not an absence of comparable cars.`
+                : `${meta.name} couldn't be reached — this is a temporary fetch problem, not an absence of comparable cars.`}
             </p>
           </div>
-          <Disclosure summary="Show error detail">
-            <p className="text-[13px] text-faint">{data.retrieval_error}</p>
-          </Disclosure>
+          {data.retrieval_error && (
+            <Disclosure summary="Show error detail">
+              <p className="text-[13px] text-faint">{data.retrieval_error}</p>
+            </Disclosure>
+          )}
         </div>
       ) : hasNoComparables ? (
         <div className="flex flex-1 flex-col gap-2 px-5 py-6">
@@ -150,7 +155,11 @@ export function SourceCard({
                 {data.unknown_year_km_frac > 0 && (
                   <Row label="Missing year/km" value={fmtPct(data.unknown_year_km_frac * 100, 0)} />
                 )}
-                {data.sample_warning && <p className="mt-1 text-caution">{data.sample_warning}</p>}
+                {data.sample_warnings.map((w) => (
+                  <p key={w.code} className="mt-1 text-caution">
+                    {sampleWarningText(w)}
+                  </p>
+                ))}
               </dl>
             </Disclosure>
 

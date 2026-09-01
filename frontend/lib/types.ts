@@ -36,6 +36,19 @@ export interface MileageAssessment {
   note: string
 }
 
+/* Structured, code-only warnings. Never carry backend prose (exception text,
+ * ratios, "n=1" jargon) - the frontend owns all wording for these, keyed off
+ * `code` (+ `reason` for retrieval failures). See lib/warning-copy.ts. */
+export type SampleWarningCode = 'single_listing' | 'implausible_ratio'
+export interface SampleWarning {
+  code: SampleWarningCode
+}
+export type RetrievalFailureReason = 'timeout' | 'blocked'
+export interface RetrievalIssue {
+  code: 'retrieval_failed'
+  reason: RetrievalFailureReason
+}
+
 export interface SourceResult {
   tier: string | null
   comparable_count: number
@@ -47,7 +60,9 @@ export interface SourceResult {
   insufficient: boolean
   unknown_year_km_frac: number
   outliers_trimmed: number
-  sample_warning: string
+  sample_warnings: SampleWarning[]
+  retrieval_issue: RetrievalIssue | null
+  /** Raw backend error text - only for an explicit, opt-in "show error detail" affordance. Never render by default. */
   retrieval_error: string | null
   mileage_match: MileageMatch
   mileage: MileageAssessment
@@ -56,6 +71,11 @@ export interface SourceResult {
 
 export type ConfidenceFlag = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT'
 export type Agreement = 'agree' | 'meaningful' | 'large' | null
+
+export type ConfidenceWarning =
+  | { code: SampleWarningCode; source: SourceKey }
+  | { code: 'retrieval_failed'; source: SourceKey; reason: RetrievalFailureReason }
+  | { code: 'source_disagreement'; spread_pct: number }
 
 export interface CarEcho {
   brand: string
@@ -86,7 +106,7 @@ export interface CompareResult {
   confidence: {
     flag: ConfidenceFlag
     reasons: string
-    warnings: string[]
+    warnings: ConfidenceWarning[]
   }
   insufficient: boolean
   primary_source_for_ranking: string | null
