@@ -310,6 +310,12 @@ def _record_to_row(rec: dict) -> dict:
     sef = rec.get("sefName")
     rec_id = rec.get("id")
     url = f"{BASE}/detail/{sef}/{rec_id}/" if sef and rec_id else None
+    # Present on both search-card ("next_data") and detail-page
+    # ("sitemap_detail") records -- no extra fetch needed. Used downstream
+    # (phase6_validate.qualifies_as_vehicle) to exclude AAA Auto's own
+    # listings from comparisons; captured here regardless, same as every
+    # other field -- filtering happens only at comparison time.
+    seller = rec.get("user") or {}
 
     return {
         "title": clean_text(rec.get("title")),
@@ -360,6 +366,7 @@ def _record_to_row(rec: dict) -> dict:
             if rec.get("clientCreatedAt") is not None
             else rec.get("publishUp")
         ),
+        "seller_display_name": clean_text(seller.get("displayName")),
         "url": url,
     }
 

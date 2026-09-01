@@ -297,6 +297,7 @@ def _norm_market_row(source: str, raw: dict) -> dict:
             "body_type": _clean(raw.get("body_type")),
             "price": _int(raw.get("price")),
             "url": _clean(raw.get("url")),
+            "seller_display_name": _clean(raw.get("seller_display_name")),
         }
     # bazos
     title = _clean(raw.get("title"))
@@ -959,6 +960,24 @@ _REJECT_TITLE_RE = re.compile(
 )
 
 
+# 2026-09-01 business decision: AAA Auto's own listings (Autobazar.eu only --
+# Bazoš captures no seller/dealer signal today) are excluded from every
+# comparison. Still scraped and stored in full either way -- this is a
+# comparison-time filter only, applied here so it covers BOTH the live-scrape
+# path (autobazar_scraper.py's seller_display_name) and the DB-backed path
+# (market-collector's bridge, same field name by convention) uniformly,
+# since both funnel through qualifies_as_vehicle() via evaluate_car().
+# Matches every observed branch account's display-name convention ("AAA AUTO
+# - Michalovce", "AAA AUTO - Praha", "AAA AUTO Sokolov" with no dash, etc.)
+# without needing a maintained list of branches.
+_AAA_AUTO_RE = re.compile(r"\baaa\s*auto\b", re.I)
+
+
+def _is_aaa_auto(row) -> bool:
+    name = row.get("seller_display_name")
+    return isinstance(name, str) and bool(_AAA_AUTO_RE.search(name))
+
+
 def qualifies_as_vehicle(row) -> bool:
     """
     Candidate-qualification gate applied BEFORE tolerance rules.
@@ -967,6 +986,7 @@ def qualifies_as_vehicle(row) -> bool:
     that carry the brand token in their title but are not whole cars. Those pass
     the tolerance rules because missing fields are treated as `unknown` (never
     fails) - and they wreck the median. A real listing must:
+      * NOT be one of AAA Auto's own listings (see _is_aaa_auto above),
       * have a plausible price (>= VEHICLE_PRICE_FLOOR),
       * expose at least one vehicle attribute (year OR mileage), and
       * NOT be an obvious parts/for-scrap ad, auction, or lease-takeover offer
@@ -976,6 +996,8 @@ def qualifies_as_vehicle(row) -> bool:
     dropping parts. It is deliberately NOT a tolerance rule, so the
     "unknown never fails" principle is preserved for real vehicles.
     """
+    if _is_aaa_auto(row):
+        return False
     price = _int(row.get("price"))
     if price is None or price < VEHICLE_PRICE_FLOOR:
         return False
