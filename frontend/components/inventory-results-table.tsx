@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { AnalysisCarResult, AnalysisSourceResult } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtYear, tierLabel } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
 import { ConfidenceBadge, DiffBadge, MetaPill } from "@/components/badges"
 import { MileageBadge, MileageNotice } from "@/components/mileage-notice"
 
@@ -12,11 +13,11 @@ import { MileageBadge, MileageNotice } from "@/components/mileage-notice"
  * price difference, and sample size, mirroring the single-car result layout.
  */
 export function InventoryResultsTable({ cars }: { cars: AnalysisCarResult[] }) {
+  const t = useT()
   if (cars.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface px-5 py-10 text-center text-sm text-muted">
-        No cars produced a usable market ranking. See the per-car notes for why (insufficient comparables or
-        blocked sources).
+        {t.inventory.resultsTable.noRanking}
       </div>
     )
   }
@@ -25,11 +26,11 @@ export function InventoryResultsTable({ cars }: { cars: AnalysisCarResult[] }) {
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
       <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_9rem_9rem_9rem] items-center gap-3 border-b border-border bg-surface-2/50 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-faint">
         <span className="text-center">#</span>
-        <span>Vehicle</span>
-        <span className="text-right">Asking</span>
+        <span>{t.inventory.resultsTable.colVehicle}</span>
+        <span className="text-right">{t.inventory.resultsTable.colAsking}</span>
         <span>Autobazar.eu</span>
         <span>Bazoš.sk</span>
-        <span>Confidence</span>
+        <span>{t.inventory.resultsTable.colConfidence}</span>
       </div>
       <ul>
         {cars.map((car, i) => (
@@ -41,6 +42,7 @@ export function InventoryResultsTable({ cars }: { cars: AnalysisCarResult[] }) {
 }
 
 function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const specs = [fmtYear(car.year), car.fuel, car.km != null ? fmtKm(car.km) : null]
     .filter(Boolean)
@@ -103,18 +105,18 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
           <SourceDetail title="Bazoš.sk" src={car.bazos} submittedKm={car.km} />
           <div className="md:col-span-2 flex flex-col gap-1 border-t border-border pt-3 text-[12px] text-faint">
             <p>
-              <span className="text-muted">Why this confidence: </span>
+              <span className="text-muted">{t.inventory.resultsTable.whyConfidence}</span>
               {car.confidence_reasons}
             </p>
             {car.median_spread_pct != null && (
               <p>
-                <span className="text-muted">Cross-source median spread: </span>
-                {car.median_spread_pct}% (shown, never averaged)
+                <span className="text-muted">{t.inventory.resultsTable.medianSpread}</span>
+                {t.inventory.resultsTable.shownNeverAveraged(car.median_spread_pct)}
               </p>
             )}
             {car.missing_critical_fields && car.missing_critical_fields !== "none" && (
               <p>
-                <span className="text-muted">Missing inventory fields: </span>
+                <span className="text-muted">{t.inventory.resultsTable.missingFields}</span>
                 {car.missing_critical_fields}
               </p>
             )}
@@ -126,8 +128,13 @@ function ResultRow({ car, rank }: { car: AnalysisCarResult; rank: number }) {
 }
 
 function SourceCell({ src }: { src: AnalysisSourceResult }) {
+  const t = useT()
   if (src.error && src.comparable_count === 0) {
-    return <span className="text-[12px] text-faint">{src.error.startsWith("BLOCKED") ? "blocked" : "no data"}</span>
+    return (
+      <span className="text-[12px] text-faint">
+        {src.error.startsWith("BLOCKED") ? t.inventory.resultsTable.blocked : t.inventory.resultsTable.noData}
+      </span>
+    )
   }
   if (src.comparable_count === 0) {
     return <span className="text-[12px] text-faint">—</span>
@@ -137,7 +144,7 @@ function SourceCell({ src }: { src: AnalysisSourceResult }) {
       <span className="font-mono text-[13px] tabular-nums text-foreground">{fmtEur(src.median_eur)}</span>
       <span className="flex items-center gap-1.5">
         <DiffBadge pct={src.price_diff_pct} />
-        <span className="text-[11px] text-faint">n={src.comparable_count}</span>
+        <span className="text-[11px] text-faint">{src.comparable_count}</span>
       </span>
       {(src.mileage_match === "large" || src.mileage_match === "very_large") && (
         <MileageBadge match={src.mileage_match} />
@@ -155,22 +162,23 @@ function SourceDetail({
   src: AnalysisSourceResult
   submittedKm: number | null
 }) {
+  const t = useT()
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-medium text-foreground">{title}</span>
         <div className="flex items-center gap-1.5">
-          {src.tier && <MetaPill>{tierLabel(src.tier)}</MetaPill>}
-          <MetaPill tone={src.insufficient ? "caution" : "neutral"}>n={src.comparable_count}</MetaPill>
+          {src.tier && <MetaPill>{tierLabel(src.tier, t.tier)}</MetaPill>}
+          <MetaPill tone={src.insufficient ? "caution" : "neutral"}>{t.count.comparables(src.comparable_count)}</MetaPill>
         </div>
       </div>
       {src.error ? (
         <p className="text-[12px] text-faint">{src.error}</p>
       ) : src.comparable_count === 0 ? (
-        <p className="text-[12px] text-faint">No comparable listings.</p>
+        <p className="text-[12px] text-faint">{t.inventory.resultsTable.noComparableListings}</p>
       ) : (
         <div className="flex items-center gap-2 text-[13px]">
-          <span className="text-muted">Median</span>
+          <span className="text-muted">{t.inventory.resultsTable.median}</span>
           <span className="font-mono tabular-nums text-foreground">{fmtEur(src.median_eur)}</span>
           <DiffBadge pct={src.price_diff_pct} />
         </div>

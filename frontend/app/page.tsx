@@ -2,25 +2,29 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
 import { SingleCarModule } from "@/components/single-car-module"
 import { InventoryModule } from "@/components/inventory-module"
+import { LocaleSwitcher } from "@/components/locale-switcher"
 
 type TopMode = "single" | "inventory"
 
 export default function Page() {
   const [mode, setMode] = useState<TopMode>("single")
+  const t = useT()
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-7 px-4 py-8 md:px-6 md:py-10">
       <header className="flex flex-col gap-4 border-b border-border pb-6">
-        <div className="flex flex-col gap-1">
-          <span className="text-3xl font-semibold tracking-tight">
-            <span className="text-foreground">Car</span>
-            <span className="text-accent">val</span>
-          </span>
-          <p className="text-[15px] text-muted">
-            Used-car valuation against two independent marketplaces — shown separately, never merged.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-3xl font-semibold tracking-tight">
+              <span className="text-foreground">Car</span>
+              <span className="text-accent">val</span>
+            </span>
+            <p className="text-[15px] text-muted">{t.header.tagline}</p>
+          </div>
+          <LocaleSwitcher />
         </div>
 
         <div
@@ -29,10 +33,10 @@ export default function Page() {
           className="inline-flex w-fit rounded-lg border border-border bg-surface p-1"
         >
           <ModeTab active={mode === "single"} onClick={() => setMode("single")}>
-            Single car
+            {t.tabs.single}
           </ModeTab>
           <ModeTab active={mode === "inventory"} onClick={() => setMode("inventory")}>
-            Multi-car
+            {t.tabs.inventory}
           </ModeTab>
         </div>
       </header>

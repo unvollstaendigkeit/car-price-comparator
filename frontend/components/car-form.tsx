@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { CarInput, ParsedField } from "@/lib/types"
 import { parseRow } from "@/lib/api"
 import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
 
 const FUELS = ["", "Petrol", "Diesel", "Hybrid", "PHEV", "Electric", "LPG", "CNG"]
 const TRANSMISSIONS = ["", "Manual", "Automatic"]
@@ -41,6 +42,7 @@ export function CarForm({
   onClear?: () => void
   busy: boolean
 }) {
+  const t = useT()
   const [mode, setMode] = useState<"manual" | "paste" | "vin">("paste")
   const [form, setForm] = useState<CarInput>(empty)
 
@@ -83,7 +85,7 @@ export function CarForm({
     try {
       const parsed = await parseRow(pasteText)
       if (!parsed.ok || parsed.mode === "empty") {
-        setParseError("Couldn't read a vehicle from that text. Check the row and try again.")
+        setParseError(t.form.paste.parseError)
         setParsing(false)
         return
       }
@@ -91,7 +93,7 @@ export function CarForm({
       setDetected(parsed.fields as DetectMap)
       setDetectedVin(parsed.extras?.vin ?? null)
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : "Parsing failed")
+      setParseError(err instanceof Error ? err.message : t.form.paste.parseFailed)
     } finally {
       setParsing(false)
     }
@@ -151,23 +153,23 @@ export function CarForm({
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-lg font-semibold text-foreground">Vehicle details</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t.form.title}</h2>
         <div className="inline-flex rounded-md border border-border p-0.5">
           <ModeTab active={mode === "paste"} onClick={() => setMode("paste")}>
-            Paste a row
+            {t.form.tabs.paste}
           </ModeTab>
           <ModeTab active={mode === "manual"} onClick={() => setMode("manual")}>
-            Manual entry
+            {t.form.tabs.manual}
           </ModeTab>
           <ModeTab active={mode === "vin"} onClick={() => setMode("vin")}>
-            Search by VIN
+            {t.form.tabs.vin}
           </ModeTab>
         </div>
       </div>
 
       {mode === "manual" && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
-          <span className="mr-1 text-[13px] text-faint">Quick fill:</span>
+          <span className="mr-1 text-[13px] text-faint">{t.form.quickFill}</span>
           {EXAMPLES.map((ex) => (
             <button
               key={`${ex.brand}-${ex.model}`}
@@ -188,18 +190,15 @@ export function CarForm({
       {mode === "paste" && (
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
           <div className="flex flex-col gap-1">
-            <h3 className="text-[15px] font-medium text-foreground">Paste a row</h3>
-            <p className="text-[13px] text-muted">
-              Copy one complete row from Excel or Google Sheets and paste it here. You don&apos;t need to copy the
-              headers.
-            </p>
+            <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
+            <p className="text-[13px] text-muted">{t.form.paste.description}</p>
           </div>
           <textarea
             id="paste-row"
             className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={"Paste your row here…"}
+            placeholder={t.form.paste.placeholder}
           />
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -208,14 +207,14 @@ export function CarForm({
               disabled={pasteText.trim() === "" || parsing}
               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {parsing ? "Detecting…" : "Detect car"}
+              {parsing ? t.form.paste.detecting : t.form.paste.detect}
             </button>
             <button
               type="button"
               onClick={() => setPasteText(PASTE_EXAMPLE)}
               className="text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
             >
-              Try an example
+              {t.form.paste.tryExample}
             </button>
           </div>
           {parseError && <p className="text-sm text-danger">{parseError}</p>}
@@ -223,15 +222,15 @@ export function CarForm({
           {anyDetected && (
             <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 px-4 py-3.5">
               <div className="flex flex-col gap-0.5">
-                <p className="text-[13px] font-medium uppercase tracking-wide text-faint">Detected vehicle</p>
-                <p className="text-lg font-semibold text-foreground">{detectedTitle || "Vehicle"}</p>
+                <p className="text-[13px] font-medium uppercase tracking-wide text-faint">{t.form.detected.label}</p>
+                <p className="text-lg font-semibold text-foreground">{detectedTitle || t.form.detected.fallback}</p>
                 {detectedSpec && <p className="text-sm text-muted">{detectedSpec}</p>}
               </div>
 
               {missingImportant && (
                 <p className="flex items-start gap-1.5 text-[13px] text-caution">
                   <span aria-hidden>⚠</span>
-                  <span>Some details couldn&apos;t be detected. Please check the fields below.</span>
+                  <span>{t.form.detected.missingWarning}</span>
                 </p>
               )}
             </div>
@@ -242,11 +241,8 @@ export function CarForm({
       {mode === "vin" && (
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
           <div className="flex flex-col gap-1">
-            <h3 className="text-[15px] font-medium text-foreground">Search by VIN</h3>
-            <p className="text-[13px] text-muted">
-              Paste a vehicle identification number to look up its details from an external registry. This lookup
-              isn&apos;t connected yet — for now, use Paste a row or Manual entry below.
-            </p>
+            <h3 className="text-[15px] font-medium text-foreground">{t.form.vin.title}</h3>
+            <p className="text-[13px] text-muted">{t.form.vin.description}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <input
@@ -259,18 +255,18 @@ export function CarForm({
             <button
               type="button"
               disabled
-              title="VIN lookup is coming soon"
+              title={t.form.vin.comingSoonTitle}
               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground opacity-40 disabled:cursor-not-allowed"
             >
-              Look up VIN
+              {t.form.vin.lookup}
             </button>
-            <span className="text-[13px] text-faint">Coming soon</span>
+            <span className="text-[13px] text-faint">{t.form.vin.comingSoon}</span>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
-        <Field label="Brand" required mark={detected.brand}>
+        <Field label={t.form.fields.brand} required mark={detected.brand}>
           <input
             className="ab-input"
             value={form.brand}
@@ -278,7 +274,7 @@ export function CarForm({
             placeholder="Skoda"
           />
         </Field>
-        <Field label="Model" required mark={detected.model}>
+        <Field label={t.form.fields.model} required mark={detected.model}>
           <input
             className="ab-input"
             value={form.model}
@@ -286,7 +282,7 @@ export function CarForm({
             placeholder="Octavia"
           />
         </Field>
-        <Field label="Variant / engine" hint="e.g. 2.0 TDI 150HP" mark={detected.variant}>
+        <Field label={t.form.fields.variant} hint={t.form.fields.variantHint} mark={detected.variant}>
           <input
             className="ab-input"
             value={form.variant ?? ""}
@@ -295,7 +291,7 @@ export function CarForm({
           />
         </Field>
 
-        <Field label="Year" mark={detected.year}>
+        <Field label={t.form.fields.year} mark={detected.year}>
           <input
             className="ab-input"
             inputMode="numeric"
@@ -304,16 +300,16 @@ export function CarForm({
             placeholder="2019"
           />
         </Field>
-        <Field label="Fuel" mark={detected.fuel}>
+        <Field label={t.form.fields.fuel} mark={detected.fuel}>
           <select className="ab-input" value={form.fuel ?? ""} onChange={(e) => set("fuel", e.target.value)}>
             {FUELS.map((f) => (
               <option key={f} value={f}>
-                {f === "" ? "—" : f}
+                {f === "" ? t.form.none : t.form.fuelLabels[f as keyof typeof t.form.fuelLabels]}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Mileage (km)" mark={detected.km}>
+        <Field label={t.form.fields.km} mark={detected.km}>
           <input
             className="ab-input"
             inputMode="numeric"
@@ -323,7 +319,7 @@ export function CarForm({
           />
         </Field>
 
-        <Field label="Asking price (€)" mark={detected.price}>
+        <Field label={t.form.fields.price} mark={detected.price}>
           <input
             className="ab-input"
             inputMode="numeric"
@@ -332,7 +328,7 @@ export function CarForm({
             placeholder="15500"
           />
         </Field>
-        <Field label="Power (kW)" mark={detected.power_kw}>
+        <Field label={t.form.fields.power} mark={detected.power_kw}>
           <input
             className="ab-input"
             inputMode="numeric"
@@ -341,15 +337,15 @@ export function CarForm({
             placeholder="110"
           />
         </Field>
-        <Field label="Transmission" mark={detected.transmission}>
+        <Field label={t.form.fields.transmission} mark={detected.transmission}>
           <select
             className="ab-input"
             value={form.transmission ?? ""}
             onChange={(e) => set("transmission", e.target.value)}
           >
-            {TRANSMISSIONS.map((t) => (
-              <option key={t} value={t}>
-                {t === "" ? "—" : t}
+            {TRANSMISSIONS.map((tr) => (
+              <option key={tr} value={tr}>
+                {tr === "" ? t.form.none : t.form.transmissionLabels[tr as keyof typeof t.form.transmissionLabels]}
               </option>
             ))}
           </select>
@@ -357,9 +353,7 @@ export function CarForm({
       </div>
 
       <div className="flex items-center justify-between gap-4 border-t border-border px-5 py-4">
-        <p className="text-[13px] text-faint">
-          Brand and model are required. The more fields you provide, the tighter the comparable match.
-        </p>
+        <p className="text-[13px] text-faint">{t.form.footerHint}</p>
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -367,14 +361,14 @@ export function CarForm({
             disabled={busy || !hasInput}
             className="rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Clear
+            {t.form.clear}
           </button>
           <button
             type="submit"
             disabled={!canSubmit}
             className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy ? "Comparing…" : "Compare prices"}
+            {busy ? t.form.submitting : t.form.submit}
           </button>
         </div>
       </div>
@@ -419,6 +413,7 @@ function Field({
   mark?: ParsedField
   children: React.ReactNode
 }) {
+  const t = useT()
   const lowConf = mark?.detected && (mark.confidence === "low" || mark.confidence === "medium")
   return (
     <label className="flex flex-col gap-1.5">
@@ -429,7 +424,7 @@ function Field({
           <span
             className={"ml-auto h-1.5 w-1.5 rounded-full " + (lowConf ? "bg-caution" : "bg-accent")}
             aria-hidden="true"
-            title={lowConf ? "Low-confidence guess — please verify" : "Detected"}
+            title={lowConf ? t.form.lowConfidenceTitle : t.form.detectedTitle}
           />
         )}
       </span>
@@ -437,7 +432,7 @@ function Field({
       {hint && !lowConf && <span className="text-[13px] text-faint">{hint}</span>}
       {lowConf && (
         <span className="flex items-center gap-1 text-[13px] text-caution">
-          <span aria-hidden>⚠</span> Please verify
+          <span aria-hidden>⚠</span> {t.form.pleaseVerify}
         </span>
       )}
     </label>

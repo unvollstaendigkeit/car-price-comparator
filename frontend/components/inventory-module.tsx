@@ -5,6 +5,8 @@ import type { AnalysisCarResult, AnalysisEvent, AnalysisSummary, InventoryReport
 import { loadInventoryDemo, parseInventory, streamInventoryAnalysis } from "@/lib/api"
 import { cn } from "@/lib/format"
 import { exportInventoryXlsx, exportInventoryReport, openInventoryResults } from "@/lib/exports"
+import { useT } from "@/lib/i18n/use-t"
+import type { Dictionary } from "@/lib/i18n/dictionaries"
 import { Disclosure } from "@/components/disclosure"
 import { InventoryReviewTable } from "@/components/inventory-review-table"
 import { InventoryResultsTable } from "@/components/inventory-results-table"
@@ -22,6 +24,7 @@ const ACCEPT = ".csv,.xlsx,.xls"
  * analysis is a later phase.
  */
 export function InventoryModule() {
+  const t = useT()
   const [phase, setPhase] = useState<Phase>("upload")
   const [report, setReport] = useState<InventoryReport | null>(null)
   const [loading, setLoading] = useState(false)
@@ -41,7 +44,7 @@ export function InventoryModule() {
       setReport(rep)
       setPhase("review")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read that file.")
+      setError(err instanceof Error ? err.message : t.inventory.couldNotReadFile)
     } finally {
       setLoading(false)
     }
@@ -141,14 +144,12 @@ function UploadPanel({
   onDemo: (name: "sample" | "alt") => void
   setDragging: (v: boolean) => void
 }) {
+  const t = useT()
   return (
     <div className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5 md:p-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">Upload your inventory</h2>
-        <p className="text-[15px] text-muted">
-          Drop a dealer spreadsheet and we&apos;ll detect the columns automatically — any reasonable layout works. No
-          fixed template required.
-        </p>
+        <h2 className="text-lg font-semibold text-foreground">{t.inventory.upload.title}</h2>
+        <p className="text-[15px] text-muted">{t.inventory.upload.description}</p>
       </div>
 
       <button
@@ -181,9 +182,9 @@ function UploadPanel({
           />
         </svg>
         <span className="text-sm font-medium text-foreground">
-          {loading ? "Reading spreadsheet…" : "Drop a file or click to browse"}
+          {loading ? t.inventory.upload.reading : t.inventory.upload.dropOrBrowse}
         </span>
-        <span className="text-[13px] text-faint">Excel (.xlsx) or CSV (.csv)</span>
+        <span className="text-[13px] text-faint">{t.inventory.upload.fileTypes}</span>
       </button>
 
       <input
@@ -201,14 +202,14 @@ function UploadPanel({
       )}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-4">
-        <span className="text-[13px] text-faint">No file handy? Try a demo:</span>
+        <span className="text-[13px] text-faint">{t.inventory.upload.noFile}</span>
         <button
           type="button"
           onClick={() => onDemo("sample")}
           disabled={loading}
           className="rounded-md border border-border px-2.5 py-1 text-[13px] text-muted hover:border-border-strong hover:text-foreground disabled:opacity-40"
         >
-          98-car inventory
+          {t.inventory.upload.demoSample}
         </button>
         <button
           type="button"
@@ -216,7 +217,7 @@ function UploadPanel({
           disabled={loading}
           className="rounded-md border border-border px-2.5 py-1 text-[13px] text-muted hover:border-border-strong hover:text-foreground disabled:opacity-40"
         >
-          Alternative format
+          {t.inventory.upload.demoAlt}
         </button>
       </div>
     </div>
@@ -235,6 +236,7 @@ function ReviewPanel({
   onConfirm: () => void
   onReset: () => void
 }) {
+  const t = useT()
   const { counts } = report
   const ready = counts.valid_for_comparison
 
@@ -244,27 +246,25 @@ function ReviewPanel({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1">
             <p className="text-[13px] uppercase tracking-wide text-faint">{report.source_name}</p>
-            <h2 className="text-2xl font-semibold text-foreground">
-              {counts.total_rows} {counts.total_rows === 1 ? "car" : "cars"} detected
-            </h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t.inventory.review.carsDetected(counts.total_rows)}</h2>
           </div>
           <button
             type="button"
             onClick={onReset}
             className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
           >
-            Upload a different file
+            {t.inventory.review.uploadDifferent}
           </button>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Stat label="Ready" value={counts.valid_for_comparison} tone="positive" />
-          <Stat label="Needs review" value={counts.review} tone="caution" />
-          <Stat label="Sold / unavailable" value={counts.sold_or_unavailable} tone="muted" />
+          <Stat label={t.inventory.review.statReady} value={counts.valid_for_comparison} tone="positive" />
+          <Stat label={t.inventory.review.statNeedsReview} value={counts.review} tone="caution" />
+          <Stat label={t.inventory.review.statSold} value={counts.sold_or_unavailable} tone="muted" />
         </div>
 
         {(report.mapping.length > 0 || report.ambiguities.length > 0 || report.unmapped_columns.length > 0) && (
-          <Disclosure summary="How your columns were mapped">
+          <Disclosure summary={t.inventory.review.columnMapping}>
             <div className="flex flex-col gap-3 text-[13px]">
               <div className="flex flex-col gap-1">
                 {report.mapping.map((m) => (
@@ -276,9 +276,7 @@ function ReviewPanel({
                 ))}
               </div>
               {report.unmapped_columns.length > 0 && (
-                <p className="text-faint">
-                  Ignored columns: {report.unmapped_columns.join(", ")}
-                </p>
+                <p className="text-faint">{t.inventory.review.ignoredColumns(report.unmapped_columns.join(", "))}</p>
               )}
               {report.ambiguities.length > 0 && (
                 <div className="flex flex-col gap-1">
@@ -297,16 +295,14 @@ function ReviewPanel({
       <InventoryReviewTable report={report} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-5 py-4">
-        <p className="text-[13px] text-faint">
-          No marketplace searches have run yet. Continue when the detected cars look right.
-        </p>
+        <p className="text-[13px] text-faint">{t.inventory.review.noSearchesYet}</p>
         <button
           type="button"
           onClick={onConfirm}
           disabled={ready === 0}
           className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Continue to valuation →
+          {t.inventory.review.continue}
         </button>
       </div>
     </div>
@@ -342,6 +338,7 @@ function ReadyPanel({
   onReset: () => void
   onRun: () => void
 }) {
+  const t = useT()
   const ready = report.counts.valid_for_comparison
   return (
     <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-surface px-6 py-14 text-center">
@@ -351,13 +348,8 @@ function ReadyPanel({
         </svg>
       </span>
       <div className="flex flex-col gap-1.5">
-        <h2 className="text-2xl font-semibold text-foreground">Ready to analyze {ready} cars</h2>
-        <p className="mx-auto max-w-md text-[15px] leading-relaxed text-muted">
-          Each car is valued against Autobazar.eu and Bazoš.sk — the same two-source comparison used in Single car
-          mode. Cars are grouped by make &amp; model, so shared searches keep requests low and the two sources stay
-          separate (never blended). Market data for each model is cached for 24h, so repeat runs reuse it with no new
-          requests.
-        </p>
+        <h2 className="text-2xl font-semibold text-foreground">{t.inventory.ready.readyToAnalyze(ready)}</h2>
+        <p className="mx-auto max-w-md text-[15px] leading-relaxed text-muted">{t.inventory.ready.description}</p>
       </div>
       <label className="flex cursor-pointer items-center gap-2.5 rounded-md border border-border bg-surface-2/50 px-3.5 py-2 text-[13px] text-muted">
         <input
@@ -367,7 +359,7 @@ function ReadyPanel({
           className="h-4 w-4 accent-accent"
         />
         <span>
-          Refresh market data <span className="text-faint">— ignore the cache and fetch every model live</span>
+          {t.inventory.ready.refreshLabel} <span className="text-faint">{t.inventory.ready.refreshHint}</span>
         </span>
       </label>
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -376,14 +368,14 @@ function ReadyPanel({
           onClick={onBack}
           className="rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted hover:border-border-strong hover:text-foreground"
         >
-          Back to review
+          {t.inventory.ready.backToReview}
         </button>
         <button
           type="button"
           onClick={onReset}
           className="rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted hover:border-border-strong hover:text-foreground"
         >
-          Start over
+          {t.inventory.ready.startOver}
         </button>
         <button
           type="button"
@@ -391,7 +383,7 @@ function ReadyPanel({
           disabled={ready === 0}
           className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Run market analysis →
+          {t.inventory.ready.run}
         </button>
       </div>
     </div>
@@ -436,14 +428,14 @@ function fmtSecs(s: number): string {
 // carries the authoritative value in `model_budget_s`.
 const MODEL_BUDGET_S = 25
 
-function formatAge(ageS: number | null): string {
+function formatAge(ageS: number | null, t: Dictionary): string {
   if (ageS == null) return ""
-  if (ageS < 90) return "just now"
+  if (ageS < 90) return t.inventory.analysis.justNow
   const mins = Math.round(ageS / 60)
-  if (mins < 90) return `${mins}m old`
+  if (mins < 90) return t.inventory.analysis.minutesOld(mins)
   const hours = Math.round(ageS / 3600)
-  if (hours < 36) return `${hours}h old`
-  return `${Math.round(ageS / 86400)}d old`
+  if (hours < 36) return t.inventory.analysis.hoursOld(hours)
+  return t.inventory.analysis.daysOld(Math.round(ageS / 86400))
 }
 
 function AnalysisPanel({
@@ -459,6 +451,7 @@ function AnalysisPanel({
   onReset: () => void
   onRefreshRun: () => void
 }) {
+  const t = useT()
   const [status, setStatus] = useState<"running" | "done" | "error">("running")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress>({
@@ -514,19 +507,17 @@ function AnalysisPanel({
           }
           case "source_timeout": {
             const src = e.source === "autobazar" ? "Autobazar.eu" : "Bazoš.sk"
-            const kept = e.kept > 0 ? ` (kept ${e.kept} partial listing${e.kept === 1 ? "" : "s"})` : ""
-            setNotices((n) => [...n, `${src} timed out on ${e.brand} ${e.model} — continuing${kept}.`])
+            const kept = e.kept > 0 ? t.inventory.analysis.keptPartial(e.kept) : ""
+            setNotices((n) => [...n, t.inventory.analysis.sourceTimeout(src, e.brand, e.model, kept)])
             setProgress((p) => ({ ...p, timeouts: p.timeouts + 1 }))
             break
           }
           case "group_timeout": {
             const kept = e.ab_kept + e.bz_kept
-            const keptTxt = kept > 0 ? ` Kept ${kept} partial listing${kept === 1 ? "" : "s"}.` : ""
+            const keptTxt = kept > 0 ? t.inventory.analysis.keptPartialSentence(kept) : ""
             setNotices((n) => [
               ...n,
-              `${e.brand} ${e.model}: TIME BUDGET EXCEEDED (${Math.round(e.elapsed_s)}s of ${Math.round(
-                e.budget_s,
-              )}s) — moved on so the run keeps going.${keptTxt}`,
+              t.inventory.analysis.groupTimeout(e.brand, e.model, Math.round(e.elapsed_s), Math.round(e.budget_s), keptTxt),
             ])
             setProgress((p) => ({ ...p, modelTimeouts: p.modelTimeouts + 1 }))
             break
@@ -564,7 +555,7 @@ function AnalysisPanel({
       { refresh },
     ).catch((err) => {
       if (controller.signal.aborted) return
-      setErrorMsg(err instanceof Error ? err.message : "Analysis failed.")
+      setErrorMsg(err instanceof Error ? err.message : t.inventory.analysis.analysisFailed)
       setStatus("error")
     })
 
@@ -598,10 +589,14 @@ function AnalysisPanel({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1">
             <p className="text-[13px] uppercase tracking-wide text-faint">
-              {status === "running" ? "Analyzing inventory" : status === "done" ? "Analysis complete" : "Analysis stopped"}
+              {status === "running"
+                ? t.inventory.analysis.statusRunning
+                : status === "done"
+                  ? t.inventory.analysis.statusDone
+                  : t.inventory.analysis.statusStopped}
             </p>
             <h2 className="text-2xl font-semibold text-foreground">
-              {progress.analyzed} / {progress.total} cars valued
+              {t.inventory.analysis.carsValued(progress.analyzed, progress.total)}
             </h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -611,8 +606,8 @@ function AnalysisPanel({
                   <>
                     <button
                       type="button"
-                      onClick={() => exportInventoryXlsx(ranked)}
-                      title="Download an Excel workbook of every analyzed car (Autobazar.eu and Bazoš.sk kept separate)"
+                      onClick={() => exportInventoryXlsx(ranked, t)}
+                      title={t.inventory.analysis.exportResultsTitle}
                       className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[13px] font-semibold text-accent-foreground transition-opacity hover:opacity-90"
                     >
                       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
@@ -624,12 +619,12 @@ function AnalysisPanel({
                           strokeLinejoin="round"
                         />
                       </svg>
-                      Export results
+                      {t.inventory.analysis.exportResults}
                     </button>
                     <button
                       type="button"
-                      onClick={() => exportInventoryReport(ranked, summary)}
-                      title="Download a self-contained HTML report (open in any browser, or Print → Save as PDF)"
+                      onClick={() => exportInventoryReport(ranked, summary, t)}
+                      title={t.inventory.analysis.exportReportTitle}
                       className="flex items-center gap-1.5 rounded-md border border-accent/50 px-3 py-1.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent/10"
                     >
                       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
@@ -641,15 +636,15 @@ function AnalysisPanel({
                           strokeLinejoin="round"
                         />
                       </svg>
-                      Export report
+                      {t.inventory.analysis.exportReport}
                     </button>
                     <button
                       type="button"
-                      onClick={() => openInventoryResults(ranked, summary)}
-                      title="Open a clean, scannable results view in a new tab"
+                      onClick={() => openInventoryResults(ranked, summary, t)}
+                      title={t.inventory.analysis.openResultsTitle}
                       className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
                     >
-                      Open results
+                      {t.inventory.analysis.openResults}
                       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
                         <path
                           d="M14 5h5v5m0-5-7 7M10 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-4"
@@ -665,7 +660,7 @@ function AnalysisPanel({
                 <button
                   type="button"
                   onClick={onRefreshRun}
-                  title="Ignore cached market data and re-fetch every model live"
+                  title={t.inventory.analysis.refreshMarketDataTitle}
                   className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
                 >
                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
@@ -677,14 +672,14 @@ function AnalysisPanel({
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Refresh market data
+                  {t.inventory.analysis.refreshMarketData}
                 </button>
                 <button
                   type="button"
                   onClick={onBack}
                   className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
                 >
-                  Back
+                  {t.inventory.analysis.back}
                 </button>
               </>
             )}
@@ -693,7 +688,7 @@ function AnalysisPanel({
               onClick={onReset}
               className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted hover:border-border-strong hover:text-foreground"
             >
-              Start over
+              {t.inventory.analysis.startOver}
             </button>
           </div>
         </div>
@@ -709,12 +704,10 @@ function AnalysisPanel({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted">
             <span className="flex items-center gap-2">
               <span className="block h-3 w-3 animate-spin rounded-full border border-accent border-t-transparent" aria-hidden />
-              {progress.cached ? "Reusing cached market for" : "Searching"}{" "}
+              {progress.cached ? t.inventory.analysis.reusingCacheFor : t.inventory.analysis.searching}{" "}
               <span className="text-foreground">{progress.currentModel || "…"}</span>
             </span>
-            <span className="text-faint">
-              model {progress.groupIndex}/{progress.groupTotal}
-            </span>
+            <span className="text-faint">{t.inventory.analysis.modelProgress(progress.groupIndex, progress.groupTotal)}</span>
             {/* Live per-model elapsed timer: counts up while a live model is
                 being retrieved and turns caution as it nears the time budget. */}
             {progress.modelStartedAt != null &&
@@ -724,25 +717,23 @@ function AnalysisPanel({
                 return (
                   <span
                     className={cn("tabular-nums", near ? "text-caution" : "text-faint")}
-                    title={`Per-model time budget: ${MODEL_BUDGET_S}s`}
+                    title={t.inventory.analysis.budgetTitle(MODEL_BUDGET_S)}
                   >
                     {fmtSecs(elapsed)} / {MODEL_BUDGET_S}s
                   </span>
                 )
               })()}
-            <span className="text-faint">
-              {cachedModels} cached · {liveModels} live · {progress.lookups} live lookups
-            </span>
+            <span className="text-faint">{t.inventory.analysis.cacheLiveLookups(cachedModels, liveModels, progress.lookups)}</span>
             {progress.timeouts > 0 && (
               <span className="flex items-center gap-1.5 text-caution">
                 <span className="block h-1.5 w-1.5 rounded-full bg-caution" aria-hidden />
-                {progress.timeouts} timeout{progress.timeouts === 1 ? "" : "s"} — continuing
+                {t.inventory.analysis.timeouts(progress.timeouts)}
               </span>
             )}
             {progress.modelTimeouts > 0 && (
               <span className="flex items-center gap-1.5 text-danger">
                 <span className="block h-1.5 w-1.5 rounded-full bg-danger" aria-hidden />
-                {progress.modelTimeouts} model{progress.modelTimeouts === 1 ? "" : "s"} over budget
+                {t.inventory.analysis.modelsOverBudget(progress.modelTimeouts)}
               </span>
             )}
           </div>
@@ -751,22 +742,26 @@ function AnalysisPanel({
         {summary && (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
-              <SummaryStat label="High" value={summary.counts.high} tone="positive" />
-              <SummaryStat label="Medium" value={summary.counts.medium} tone="accent" />
-              <SummaryStat label="Low" value={summary.counts.low} tone="caution" />
-              <SummaryStat label="Insufficient" value={summary.counts.insufficient} tone="muted" />
-              <SummaryStat label="Live requests" value={summary.benchmark?.http_requests ?? summary.market_lookups} tone="muted" />
+              <SummaryStat label={t.inventory.analysis.statHigh} value={summary.counts.high} tone="positive" />
+              <SummaryStat label={t.inventory.analysis.statMedium} value={summary.counts.medium} tone="accent" />
+              <SummaryStat label={t.inventory.analysis.statLow} value={summary.counts.low} tone="caution" />
+              <SummaryStat label={t.inventory.analysis.statInsufficient} value={summary.counts.insufficient} tone="muted" />
+              <SummaryStat
+                label={t.inventory.analysis.statLiveRequests}
+                value={summary.benchmark?.http_requests ?? summary.market_lookups}
+                tone="muted"
+              />
               {summary.benchmark && summary.benchmark.cached_groups > 0 && (
-                <SummaryStat label="Models from cache" value={summary.benchmark.cached_groups} tone="positive" />
+                <SummaryStat label={t.inventory.analysis.statModelsFromCache} value={summary.benchmark.cached_groups} tone="positive" />
               )}
               {(summary.timeouts_total ?? 0) > 0 && (
-                <SummaryStat label="Timeouts (continued)" value={summary.timeouts_total ?? 0} tone="caution" />
+                <SummaryStat label={t.inventory.analysis.statTimeoutsContinued} value={summary.timeouts_total ?? 0} tone="caution" />
               )}
               {(summary.model_timeouts ?? 0) > 0 && (
-                <SummaryStat label="Models over budget" value={summary.model_timeouts ?? 0} tone="caution" />
+                <SummaryStat label={t.inventory.analysis.statModelsOverBudget} value={summary.model_timeouts ?? 0} tone="caution" />
               )}
               {(summary.errors_total ?? 0) > 0 && (
-                <SummaryStat label="Source errors" value={summary.errors_total ?? 0} tone="caution" />
+                <SummaryStat label={t.inventory.analysis.statSourceErrors} value={summary.errors_total ?? 0} tone="caution" />
               )}
             </div>
 
@@ -775,18 +770,17 @@ function AnalysisPanel({
             {summary.benchmark && (
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
                 <span>
-                  Total <span className="text-muted">{fmtSecs(summary.benchmark.total_time_s)}</span>
+                  {t.inventory.analysis.timingTotal} <span className="text-muted">{fmtSecs(summary.benchmark.total_time_s)}</span>
                 </span>
                 <span aria-hidden>·</span>
                 <span>
-                  Retrieval <span className="text-muted">{fmtSecs(summary.benchmark.retrieval_time_s)}</span>
-                  {summary.benchmark.avg_http_time_s
-                    ? ` (${fmtSecs(summary.benchmark.avg_http_time_s)}/req)`
-                    : ""}
+                  {t.inventory.analysis.timingRetrieval}{" "}
+                  <span className="text-muted">{fmtSecs(summary.benchmark.retrieval_time_s)}</span>
+                  {summary.benchmark.avg_http_time_s ? t.inventory.analysis.perReq(fmtSecs(summary.benchmark.avg_http_time_s)) : ""}
                 </span>
                 <span aria-hidden>·</span>
                 <span>
-                  Valuation <span className="text-muted">{fmtSecs(summary.benchmark.eval_time_s)}</span>
+                  {t.inventory.analysis.timingValuation} <span className="text-muted">{fmtSecs(summary.benchmark.eval_time_s)}</span>
                 </span>
               </p>
             )}
@@ -796,7 +790,7 @@ function AnalysisPanel({
         {/* Per-model cache/live activity log — proves reuse and shows data age. */}
         {cacheLog.length > 0 && (
           <div className="rounded-md border border-border bg-surface-2/40 p-3">
-            <p className="mb-2 text-[12px] uppercase tracking-wide text-faint">Market data source per model</p>
+            <p className="mb-2 text-[12px] uppercase tracking-wide text-faint">{t.inventory.analysis.cacheLogTitle}</p>
             <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
               {cacheLog.map((c, i) => (
                 <li key={`${c.model}-${i}`} className="flex items-center justify-between gap-3">
@@ -804,12 +798,12 @@ function AnalysisPanel({
                   {c.cached ? (
                     <span className="flex shrink-0 items-center gap-1.5 text-positive">
                       <span className="block h-1.5 w-1.5 rounded-full bg-positive" aria-hidden />
-                      cached{c.ageS != null ? ` · ${formatAge(c.ageS)}` : ""}
+                      {t.inventory.analysis.cached}{c.ageS != null ? ` · ${formatAge(c.ageS, t)}` : ""}
                     </span>
                   ) : (
                     <span className="flex shrink-0 items-center gap-1.5 text-muted">
                       <span className="block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
-                      fetched live
+                      {t.inventory.analysis.fetchedLive}
                     </span>
                   )}
                 </li>
@@ -833,7 +827,7 @@ function AnalysisPanel({
 
       {ranked.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-[13px] text-faint">Ranked most below market → least. Click a row for source details.</p>
+          <p className="text-[13px] text-faint">{t.inventory.analysis.rankedHint}</p>
           <InventoryResultsTable cars={ranked} />
         </div>
       )}

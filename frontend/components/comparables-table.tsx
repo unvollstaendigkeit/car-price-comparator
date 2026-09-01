@@ -2,12 +2,14 @@
 
 import type { Comparable } from "@/lib/types"
 import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
 
 export function ComparablesTable({ rows }: { rows: Comparable[] }) {
+  const t = useT()
   if (!rows || rows.length === 0) {
     return (
       <p className="px-4 py-6 text-center text-sm text-faint">
-        No comparable listings were retrieved for this source.
+        {t.table.noComparables}
       </p>
     )
   }
@@ -18,10 +20,10 @@ export function ComparablesTable({ rows }: { rows: Comparable[] }) {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-[13px] uppercase tracking-wide text-faint">
-              <th className="px-3 py-2.5 font-medium">Price</th>
-              <th className="px-3 py-2.5 font-medium">Year</th>
-              <th className="px-3 py-2.5 font-medium">Mileage</th>
-              <th className="px-3 py-2.5 font-medium">Listing</th>
+              <th className="px-3 py-2.5 font-medium">{t.table.price}</th>
+              <th className="px-3 py-2.5 font-medium">{t.table.year}</th>
+              <th className="px-3 py-2.5 font-medium">{t.table.mileage}</th>
+              <th className="px-3 py-2.5 font-medium">{t.table.listing}</th>
             </tr>
           </thead>
           <tbody>

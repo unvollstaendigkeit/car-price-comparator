@@ -2,6 +2,8 @@
 
 import type { Stage } from "@/lib/types"
 import { cn } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
+import type { Dictionary } from "@/lib/i18n/dictionaries"
 
 interface StageInfo {
   key: string
@@ -10,17 +12,19 @@ interface StageInfo {
   doneStages: Stage[]
 }
 
-const STAGES: StageInfo[] = [
-  { key: "prepare", label: "Preparing vehicle", startStages: ["preparing"], doneStages: ["prepared"] },
-  {
-    key: "autobazar",
-    label: "Searching Autobazar.eu",
-    startStages: ["searching_autobazar"],
-    doneStages: ["autobazar_done"],
-  },
-  { key: "bazos", label: "Searching Bazoš.sk", startStages: ["searching_bazos"], doneStages: ["bazos_done"] },
-  { key: "compare", label: "Comparing listings", startStages: ["comparing"], doneStages: ["finalizing", "result"] },
-]
+function stages(t: Dictionary): StageInfo[] {
+  return [
+    { key: "prepare", label: t.progress.preparing, startStages: ["preparing"], doneStages: ["prepared"] },
+    {
+      key: "autobazar",
+      label: t.progress.searchingAutobazar,
+      startStages: ["searching_autobazar"],
+      doneStages: ["autobazar_done"],
+    },
+    { key: "bazos", label: t.progress.searchingBazos, startStages: ["searching_bazos"], doneStages: ["bazos_done"] },
+    { key: "compare", label: t.progress.comparing, startStages: ["comparing"], doneStages: ["finalizing", "result"] },
+  ]
+}
 
 const ORDER: Stage[] = [
   "preparing",
@@ -46,12 +50,13 @@ export function ProgressStream({
   current: Stage
   counts: { autobazar?: number; bazos?: number }
 }) {
+  const t = useT()
   const currentRank = rank(current)
 
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <ol className="flex flex-col gap-3">
-        {STAGES.map((s) => {
+        {stages(t).map((s) => {
           const startRank = rank(s.startStages[0])
           const doneRank = rank(s.doneStages[s.doneStages.length - 1])
           const done = currentRank >= doneRank && doneRank !== -1
@@ -84,22 +89,20 @@ export function ProgressStream({
                 {s.label}
               </span>
               {raw !== undefined && (done || active) && (
-                <span className="ml-auto font-mono text-[13px] text-muted">{raw} listings</span>
+                <span className="ml-auto font-mono text-[13px] text-muted">{t.progress.listings(raw)}</span>
               )}
             </li>
           )
         })}
       </ol>
-      <p className="mt-4 border-t border-border pt-3 text-[13px] text-faint">
-        Live retrieval from two marketplaces — this typically takes 20–40 seconds. Results appear the moment
-        the comparison finishes.
-      </p>
+      <p className="mt-4 border-t border-border pt-3 text-[13px] text-faint">{t.progress.footer}</p>
     </div>
   )
 }
 
 function Spinner() {
+  const t = useT()
   return (
-    <span className="block h-3 w-3 animate-spin rounded-full border border-accent border-t-transparent" aria-label="in progress" />
+    <span className="block h-3 w-3 animate-spin rounded-full border border-accent border-t-transparent" aria-label={t.progress.inProgress} />
   )
 }

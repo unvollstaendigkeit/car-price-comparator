@@ -42,17 +42,13 @@ export function fmtYear(v: number | null | undefined): string {
   return String(Math.round(v))
 }
 
-export function tierLabel(tier: string | null | undefined): string {
+// Default (English) tier labels, used where a caller hasn't been localized
+// yet. Pass `t.tier` (see lib/i18n) from a localized caller instead.
+const DEFAULT_TIER_LABELS: Record<string, string> = { strict: "Strict match", moderate: "Moderate", broad: "Broad" }
+
+export function tierLabel(tier: string | null | undefined, labels: Record<string, string> = DEFAULT_TIER_LABELS): string {
   if (!tier) return "—"
-  const map: Record<string, string> = {
-    strict: "Strict match",
-    STRICT: "Strict match",
-    relaxed: "Relaxed",
-    RELAXED: "Relaxed",
-    broad: "Broad",
-    BROAD: "Broad",
-  }
-  return map[tier] ?? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase()
+  return labels[tier.toLowerCase()] ?? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase()
 }
 
 /**

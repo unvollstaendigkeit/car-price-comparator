@@ -27,23 +27,18 @@ import type {
 } from "./types"
 import { buildXlsxBlob, type CellValue } from "./xlsx"
 import { confidenceWarningText, retrievalFailureText, sampleWarningText } from "./warning-copy"
+import type { Dictionary } from "./i18n/dictionaries"
+import { tierLabel } from "./format"
 
 /* -------------------------------------------------------------------------- */
 /* Shared label helpers (wording mirrors the on-screen badges)                */
 /* -------------------------------------------------------------------------- */
-const CONFIDENCE_LABEL: Record<ConfidenceFlag, string> = {
-  HIGH: "High confidence",
-  MEDIUM: "Medium confidence",
-  LOW: "Low confidence",
-  INSUFFICIENT: "Insufficient data",
+function confidenceLabel(t: Dictionary, flag: ConfidenceFlag): string {
+  return { HIGH: t.confidence.high, MEDIUM: t.confidence.medium, LOW: t.confidence.low, INSUFFICIENT: t.confidence.insufficient }[flag]
 }
 
-const MILEAGE_LABEL: Record<MileageMatch, string> = {
-  good: "Matches comparables",
-  moderate: "Differs somewhat",
-  large: "Differs materially",
-  very_large: "Mismatch",
-  unknown: "Not verified",
+function mileageLabel(t: Dictionary, m: MileageMatch): string {
+  return t.exportInv.mileageLabel[m]
 }
 
 const MILEAGE_SEVERITY: Record<MileageMatch, number> = {
@@ -54,23 +49,12 @@ const MILEAGE_SEVERITY: Record<MileageMatch, number> = {
   good: 0,
 }
 
-const TIER_LABEL: Record<string, string> = {
-  strict: "Strict match",
-  relaxed: "Relaxed",
-  broad: "Broad",
-}
-
-function tierLabel(tier: string | null | undefined): string {
-  if (!tier) return ""
-  return TIER_LABEL[tier.toLowerCase()] ?? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase()
-}
-
 /** Direction word for a price-difference %, matching the DiffBadge thresholds. */
-function diffWord(pct: number | null | undefined): "below market" | "above market" | "at market" | "" {
+function diffWord(t: Dictionary, pct: number | null | undefined): string {
   if (pct === null || pct === undefined || Number.isNaN(pct)) return ""
-  if (pct >= 2) return "below market"
-  if (pct <= -2) return "above market"
-  return "at market"
+  if (pct >= 2) return t.diff.belowMarket
+  if (pct <= -2) return t.diff.aboveMarket
+  return t.diff.atMarket
 }
 
 /* -------------------------------------------------------------------------- */
@@ -204,15 +188,16 @@ function sourceSection(
   sourceKey: "autobazar" | "bazos",
   s: SourceResult,
   asking: number | null,
+  t: Dictionary,
 ): string {
   if (s.retrieval_issue) {
     return `<section class="src">
       <div class="src-head"><h3>${esc(title)}</h3><span class="host">${esc(host)}</span></div>
-      <p class="warn">${esc(retrievalFailureText(sourceKey))}</p>
+      <p class="warn">${esc(retrievalFailureText(t, sourceKey))}</p>
     </section>`
   }
   if (s.insufficient || s.comparable_count === 0 || s.undervaluation_pct === null) {
-    const sampleNotes = s.sample_warnings.map((w) => esc(sampleWarningText(w))).join(" ")
+    const sampleNotes = s.sample_warnings.map((w) => esc(sampleWarningText(t, w))).join(" ")
     return `<section class="src">
       <div class="src-head"><h3>${esc(title)}</h3><span class="host">${esc(host)}</span></div>
       <p class="warn">Not enough comparable listings for a reliable estimate (${s.comparable_count} found).
@@ -222,21 +207,21 @@ function sourceSection(
   }
   const tone = toneClass(s.undervaluation_pct)
   const dEur = s.price_difference_eur
-  const mileage = MILEAGE_LABEL[s.mileage_match]
+  const mileage = mileageLabel(t, s.mileage_match)
   const mileageSerious = s.mileage_match === "large" || s.mileage_match === "very_large"
   return `<section class="src">
     <div class="src-head">
       <h3>${esc(title)}</h3>
       <span class="host">${esc(host)}</span>
       <span class="spacer"></span>
-      ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier))}</span>` : ""}
+      ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier, t.tier))}</span>` : ""}
       <span class="pill">${s.comparable_count} comparable${s.comparable_count === 1 ? "" : "s"}</span>
     </div>
     <div class="metrics">
       <div class="metric"><span class="k">Market median</span><span class="v num">${eur(s.median_asking_eur)}</span></div>
       <div class="metric"><span class="k">P25 – P75</span><span class="v num">${eur(s.market_p25_eur)} – ${eur(s.market_p75_eur)}</span></div>
       <div class="metric"><span class="k">Difference vs asking</span><span class="v num ${tone}">${signedEur(dEur)} · ${pct(s.undervaluation_pct)}</span></div>
-      <div class="metric"><span class="k">Assessment</span><span class="v ${tone}">${esc(diffWord(s.undervaluation_pct))}</span></div>
+      <div class="metric"><span class="k">Assessment</span><span class="v ${tone}">${esc(diffWord(t, s.undervaluation_pct))}</span></div>
     </div>
     <div class="mileage ${mileageSerious ? "warn-box" : ""}">
       <strong>Mileage similarity:</strong> ${esc(mileage)}
@@ -252,7 +237,7 @@ function sourceSection(
   </section>`
 }
 
-function singleCarReportHtml(result: CompareResult): string {
+function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
   const { car, sources, cross_source, confidence } = result
   const heading = `${car.brand} ${car.model}`
   const specLine = [yr(car.year), car.fuel, km(car.km), car.transmission, car.body_type]
@@ -284,10 +269,10 @@ function singleCarReportHtml(result: CompareResult): string {
   ]
 
   const warnings = confidence.warnings.length
-    ? `<ul class="warnings">${confidence.warnings.map((w) => `<li>${esc(confidenceWarningText(w))}</li>`).join("")}</ul>`
+    ? `<ul class="warnings">${confidence.warnings.map((w) => `<li>${esc(confidenceWarningText(t, w))}</li>`).join("")}</ul>`
     : ""
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+  return `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Carval report — ${esc(heading)}</title>
 <style>
@@ -360,7 +345,7 @@ function singleCarReportHtml(result: CompareResult): string {
     </div>
 
     <h2>Overall assessment</h2>
-    <div><span class="conf ${confidence.flag}">${esc(CONFIDENCE_LABEL[confidence.flag])}</span></div>
+    <div><span class="conf ${confidence.flag}">${esc(confidenceLabel(t, confidence.flag))}</span></div>
     ${confidence.reasons ? `<p class="reasons">${esc(confidence.reasons)}</p>` : ""}
     ${warnings}
     ${
@@ -374,8 +359,8 @@ function singleCarReportHtml(result: CompareResult): string {
     }
 
     <h2>Autobazar.eu &amp; Bazoš.sk — shown separately, never merged</h2>
-    ${sourceSection("Autobazar.eu", "autobazar.eu", "autobazar", sources.autobazar, car.asking_price_eur)}
-    ${sourceSection("Bazoš.sk", "bazos.sk", "bazos", sources.bazos, car.asking_price_eur)}
+    ${sourceSection("Autobazar.eu", "autobazar.eu", "autobazar", sources.autobazar, car.asking_price_eur, t)}
+    ${sourceSection("Bazoš.sk", "bazos.sk", "bazos", sources.bazos, car.asking_price_eur, t)}
 
     <div class="foot">
       Each marketplace is evaluated independently — Carval never blends them into a single number.
@@ -386,8 +371,8 @@ function singleCarReportHtml(result: CompareResult): string {
 </body></html>`
 }
 
-export function exportSingleCarReport(result: CompareResult) {
-  const html = singleCarReportHtml(result)
+export function exportSingleCarReport(result: CompareResult, t: Dictionary) {
+  const html = singleCarReportHtml(result, t)
   const name = `carval-report-${slug(`${result.car.brand}-${result.car.model}`)}-${todayISO()}.html`
   downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), name)
 }
@@ -404,14 +389,14 @@ function worstMileage(car: AnalysisCarResult): { match: MileageMatch; source: st
 }
 
 /** Concise "important warning / insufficient-data" status string. */
-function warningStatus(car: AnalysisCarResult): string {
+function warningStatus(t: Dictionary, car: AnalysisCarResult): string {
   const parts: string[] = []
-  if (car.confidence_flag === "INSUFFICIENT") parts.push("Insufficient comparable data")
+  if (car.confidence_flag === "INSUFFICIENT") parts.push(t.exportInv.insufficientData)
   const check = (label: string, s: AnalysisSourceResult) => {
-    if (s.error) parts.push(s.error.startsWith("BLOCKED") ? `${label} blocked` : `${label} error`)
-    else if (s.comparable_count === 0) parts.push(`${label} no comparables`)
+    if (s.error) parts.push(s.error.startsWith("BLOCKED") ? t.exportInv.sourceBlocked(label) : t.exportInv.sourceError(label))
+    else if (s.comparable_count === 0) parts.push(t.exportInv.sourceNoComparables(label))
     if (s.mileage_match === "very_large" || s.mileage_match === "large")
-      parts.push(`${label} mileage ${MILEAGE_LABEL[s.mileage_match].toLowerCase()}`)
+      parts.push(t.exportInv.sourceMileage(label, mileageLabel(t, s.mileage_match).toLowerCase()))
   }
   check("Autobazar.eu", car.autobazar)
   check("Bazoš.sk", car.bazos)
@@ -422,27 +407,28 @@ function vehicleName(car: AnalysisCarResult): string {
   return [car.brand, car.model, car.variant].filter(Boolean).join(" ")
 }
 
-function inventorySheets(cars: AnalysisCarResult[]): { name: string; rows: CellValue[][] }[] {
+function inventorySheets(cars: AnalysisCarResult[], t: Dictionary): { name: string; rows: CellValue[][] }[] {
+  const h = t.exportInv.headers
   const header: CellValue[] = [
-    "Vehicle",
-    "Brand",
-    "Model",
-    "Variant",
-    "Year",
-    "Fuel",
-    "Mileage (km)",
-    "Asking price (€)",
-    "Autobazar.eu median (€)",
-    "Autobazar.eu diff (€)",
-    "Autobazar.eu diff (%)",
-    "Autobazar.eu comparables",
-    "Bazoš.sk median (€)",
-    "Bazoš.sk diff (€)",
-    "Bazoš.sk diff (%)",
-    "Bazoš.sk comparables",
-    "Confidence",
-    "Mileage similarity",
-    "Warnings / insufficient data",
+    h.vehicle,
+    h.brand,
+    h.model,
+    h.variant,
+    h.year,
+    h.fuel,
+    h.mileageKm,
+    h.askingPriceEur,
+    h.abMedian,
+    h.abDiffEur,
+    h.abDiffPct,
+    h.abComparables,
+    h.bzMedian,
+    h.bzDiffEur,
+    h.bzDiffPct,
+    h.bzComparables,
+    h.confidence,
+    h.mileageSimilarity,
+    h.warnings,
   ]
 
   const main: CellValue[][] = [header]
@@ -467,24 +453,17 @@ function inventorySheets(cars: AnalysisCarResult[]): { name: string; rows: CellV
       round(bzDiff),
       car.bazos.price_diff_pct,
       car.bazos.comparable_count,
-      CONFIDENCE_LABEL[car.confidence_flag],
-      `${mile.source}: ${MILEAGE_LABEL[mile.match]}`,
-      warningStatus(car),
+      confidenceLabel(t, car.confidence_flag),
+      `${mile.source}: ${mileageLabel(t, mile.match)}`,
+      warningStatus(t, car),
     ])
   })
 
   // Second worksheet: comparable listing links kept per source (the inventory
   // result only carries example links, so price/year/mileage/title are left to
   // the detailed single-car report where full comparables are available).
-  const compsHeader: CellValue[] = [
-    "Vehicle",
-    "Source",
-    "Listing price (€)",
-    "Year",
-    "Mileage (km)",
-    "Listing title",
-    "Listing URL",
-  ]
+  const ch = t.exportInv.compsHeaders
+  const compsHeader: CellValue[] = [ch.vehicle, ch.source, ch.listingPrice, ch.year, ch.mileageKm, ch.listingTitle, ch.listingUrl]
   const comps: CellValue[][] = [compsHeader]
   cars.forEach((car) => {
     const add = (label: string, s: AnalysisSourceResult) => {
@@ -495,22 +474,22 @@ function inventorySheets(cars: AnalysisCarResult[]): { name: string; rows: CellV
   })
 
   return [
-    { name: "Inventory", rows: main },
-    { name: "Comparable listings", rows: comps },
+    { name: t.exportInv.sheetInventory, rows: main },
+    { name: t.exportInv.sheetComparables, rows: comps },
   ]
 }
 
-export function exportInventoryXlsx(cars: AnalysisCarResult[]) {
-  const blob = buildXlsxBlob(inventorySheets(cars))
+export function exportInventoryXlsx(cars: AnalysisCarResult[], t: Dictionary) {
+  const blob = buildXlsxBlob(inventorySheets(cars, t))
   downloadBlob(blob, `carval-inventory-${todayISO()}.xlsx`)
 }
 
 /* ========================================================================== */
 /* 3 — INVENTORY: "Open results ↗" — dedicated scannable view in a new tab    */
 /* ========================================================================== */
-function invSourceCell(s: AnalysisSourceResult, asking: number | null): string {
+function invSourceCell(t: Dictionary, s: AnalysisSourceResult, asking: number | null): string {
   if (s.error && s.comparable_count === 0) {
-    return `<span class="faint">${s.error.startsWith("BLOCKED") ? "blocked" : "no data"}</span>`
+    return `<span class="faint">${s.error.startsWith("BLOCKED") ? t.exportInv.blocked : t.exportInv.noData}</span>`
   }
   if (s.comparable_count === 0) return `<span class="faint">—</span>`
   const tone = toneClass(s.price_diff_pct)
@@ -518,11 +497,11 @@ function invSourceCell(s: AnalysisSourceResult, asking: number | null): string {
   return `<div class="srccell">
     <span class="num">${eur(s.median_eur)}</span>
     <span class="num ${tone}">${pct(s.price_diff_pct)} · ${signedEur(d)}</span>
-    <span class="faint">n=${s.comparable_count}</span>
+    <span class="faint">${s.comparable_count}</span>
   </div>`
 }
 
-function invDetail(car: AnalysisCarResult): string {
+function invDetail(t: Dictionary, car: AnalysisCarResult): string {
   const src = (label: string, s: AnalysisSourceResult) => {
     const links = s.example_links
       .slice(0, 3)
@@ -530,16 +509,16 @@ function invDetail(car: AnalysisCarResult): string {
       .join("")
     const mileageNote =
       s.comparable_count > 0
-        ? `<div class="mline">Mileage: ${esc(MILEAGE_LABEL[s.mileage_match])}${
+        ? `<div class="mline">${esc(t.exportInv.mileagePrefix)} ${esc(mileageLabel(t, s.mileage_match))}${
             s.comp_km_median != null
-              ? ` · comps ${km(s.comp_km_p25)}–${km(s.comp_km_p75)} (median ${km(s.comp_km_median)})`
+              ? ` · ${esc(t.exportInv.compsPrefix)} ${km(s.comp_km_p25)}–${km(s.comp_km_p75)} (median ${km(s.comp_km_median)})`
               : ""
           }</div>`
         : ""
     return `<div class="dcol">
-      <div class="dhead">${esc(label)} ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier))}</span>` : ""}<span class="pill">n=${s.comparable_count}</span></div>
+      <div class="dhead">${esc(label)} ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier, t.tier))}</span>` : ""}<span class="pill">${s.comparable_count}</span></div>
       ${s.error ? `<div class="faint">${esc(s.error)}</div>` : ""}
-      ${s.comparable_count > 0 ? `<div class="mline">Median <span class="num">${eur(s.median_eur)}</span> · <span class="num ${toneClass(s.price_diff_pct)}">${pct(s.price_diff_pct)} ${esc(diffWord(s.price_diff_pct))}</span></div>` : ""}
+      ${s.comparable_count > 0 ? `<div class="mline">${esc(t.exportInv.medianLabel)} <span class="num">${eur(s.median_eur)}</span> · <span class="num ${toneClass(s.price_diff_pct)}">${pct(s.price_diff_pct)} ${esc(diffWord(t, s.price_diff_pct))}</span></div>` : ""}
       ${mileageNote}
       ${links ? `<div class="links">${links}</div>` : ""}
     </div>`
@@ -548,24 +527,24 @@ function invDetail(car: AnalysisCarResult): string {
     ${src("Autobazar.eu", car.autobazar)}
     ${src("Bazoš.sk", car.bazos)}
     <div class="dmeta">
-      <div><span class="faint">Why this confidence:</span> ${esc(car.confidence_reasons || "—")}</div>
-      ${car.median_spread_pct != null ? `<div><span class="faint">Cross-source median spread:</span> ${Math.abs(car.median_spread_pct).toFixed(0)}% (shown, never averaged)</div>` : ""}
-      ${car.missing_critical_fields && car.missing_critical_fields !== "none" ? `<div><span class="faint">Missing inventory fields:</span> ${esc(car.missing_critical_fields)}</div>` : ""}
+      <div><span class="faint">${esc(t.exportInv.whyConfidence)}</span> ${esc(car.confidence_reasons || "—")}</div>
+      ${car.median_spread_pct != null ? `<div><span class="faint">${esc(t.exportInv.medianSpread)}</span> ${esc(t.exportInv.shownNeverAveraged(Math.abs(Math.round(car.median_spread_pct))))}</div>` : ""}
+      ${car.missing_critical_fields && car.missing_critical_fields !== "none" ? `<div><span class="faint">${esc(t.exportInv.missingFields)}</span> ${esc(car.missing_critical_fields)}</div>` : ""}
     </div>
   </div></td>`
 }
 
-function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummary | null): string {
+function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummary | null, t: Dictionary): string {
   const counts = summary?.counts
   const chips = counts
     ? [
-        ["Analyzed", counts.analyzed, "accent"],
-        ["High", counts.high, "pos"],
-        ["Medium", counts.medium, "accent"],
-        ["Low", counts.low, "caution"],
-        ["Insufficient", counts.insufficient, "muted"],
+        [t.exportInv.chipAnalyzed, counts.analyzed, "accent"],
+        [t.exportInv.chipHigh, counts.high, "pos"],
+        [t.exportInv.chipMedium, counts.medium, "accent"],
+        [t.exportInv.chipLow, counts.low, "caution"],
+        [t.exportInv.chipInsufficient, counts.insufficient, "muted"],
       ]
-    : [["Analyzed", cars.length, "accent"]]
+    : [[t.exportInv.chipAnalyzed, cars.length, "accent"]]
 
   const rows = cars
     .map((car, i) => {
@@ -580,19 +559,19 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
           <td class="rank num">${i + 1}</td>
           <td class="veh"><div class="vname">${esc(vehicleName(car))}</div><div class="faint specs">${specs || "—"}</div></td>
           <td class="num asking">${eur(car.asking_price_eur)}</td>
-          <td>${invSourceCell(car.autobazar, car.asking_price_eur)}</td>
-          <td>${invSourceCell(car.bazos, car.asking_price_eur)}</td>
-          <td><span class="conf ${car.confidence_flag}">${esc(CONFIDENCE_LABEL[car.confidence_flag])}</span></td>
-          <td>${mileSerious ? `<span class="mbadge">⚠ ${esc(MILEAGE_LABEL[mile.match])}</span>` : `<span class="faint">—</span>`}</td>
+          <td>${invSourceCell(t, car.autobazar, car.asking_price_eur)}</td>
+          <td>${invSourceCell(t, car.bazos, car.asking_price_eur)}</td>
+          <td><span class="conf ${car.confidence_flag}">${esc(confidenceLabel(t, car.confidence_flag))}</span></td>
+          <td>${mileSerious ? `<span class="mbadge">⚠ ${esc(mileageLabel(t, mile.match))}</span>` : `<span class="faint">—</span>`}</td>
         </tr>
-        <tr class="detrow">${invDetail(car)}</tr>
+        <tr class="detrow">${invDetail(t, car)}</tr>
       </tbody>`
     })
     .join("")
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+  return `<!doctype html><html lang="${t.locale}"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Carval — inventory results (${cars.length})</title>
+<title>${esc(t.exportInv.docTitle(cars.length))}</title>
 <style>
   :root{--bg:#14181d;--surface:#1c2127;--surface2:#232a31;--line:#2f3944;--line2:#3c4753;
     --fg:#eef1f3;--muted:#aab4bd;--faint:#7d8792;--accent:#35c4d4;
@@ -667,17 +646,17 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
   <div class="wrap">
     <div class="topbar">
       <div class="brand">Car<span>val</span></div>
-      <div class="doc-meta">Inventory results · generated ${esc(todayISO())}</div>
+      <div class="doc-meta">${esc(t.exportInv.docMeta(todayISO()))}</div>
     </div>
-    <h1>${cars.length} ${cars.length === 1 ? "vehicle" : "vehicles"} ranked — most below market first</h1>
+    <h1>${esc(t.exportInv.heading(cars.length))}</h1>
     <div class="chips">
-      ${chips.map(([l, n, t]) => `<div class="chip ${t}"><span class="n">${n}</span><span class="l">${l}</span></div>`).join("")}
+      ${chips.map(([l, n, tone]) => `<div class="chip ${tone}"><span class="n">${n}</span><span class="l">${l}</span></div>`).join("")}
     </div>
-    <p class="hint">Click any row to expand source details and comparable listings. Autobazar.eu and Bazoš.sk are shown separately — never blended.</p>
+    <p class="hint">${esc(t.exportInv.hint)}</p>
     <table>
       <thead><tr>
-        <th class="num">#</th><th>Vehicle</th><th class="num">Asking</th>
-        <th>Autobazar.eu</th><th>Bazoš.sk</th><th>Confidence</th><th>Mileage</th>
+        <th class="num">${esc(t.exportInv.tableHeaders.rank)}</th><th>${esc(t.exportInv.tableHeaders.vehicle)}</th><th class="num">${esc(t.exportInv.tableHeaders.asking)}</th>
+        <th>Autobazar.eu</th><th>Bazoš.sk</th><th>${esc(t.exportInv.tableHeaders.confidence)}</th><th>${esc(t.exportInv.tableHeaders.mileage)}</th>
       </tr></thead>
       ${rows}
     </table>
@@ -685,14 +664,14 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
 </body></html>`
 }
 
-export function openInventoryResults(cars: AnalysisCarResult[], summary: AnalysisSummary | null) {
-  openHtmlInNewTab(inventoryResultsHtml(cars, summary))
+export function openInventoryResults(cars: AnalysisCarResult[], summary: AnalysisSummary | null, t: Dictionary) {
+  openHtmlInNewTab(inventoryResultsHtml(cars, summary, t))
 }
 
 /** Download the inventory results as a self-contained HTML report (the same
  *  document "Open results" shows, but saved to disk — sendable and, via the
  *  print styles above, ready for Print → Save as PDF with all details expanded). */
-export function exportInventoryReport(cars: AnalysisCarResult[], summary: AnalysisSummary | null) {
-  const blob = new Blob([inventoryResultsHtml(cars, summary)], { type: "text/html;charset=utf-8" })
+export function exportInventoryReport(cars: AnalysisCarResult[], summary: AnalysisSummary | null, t: Dictionary) {
+  const blob = new Blob([inventoryResultsHtml(cars, summary, t)], { type: "text/html;charset=utf-8" })
   downloadBlob(blob, `carval-inventory-${todayISO()}.html`)
 }

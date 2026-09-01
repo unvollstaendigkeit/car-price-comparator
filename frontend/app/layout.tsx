@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
+import { LocaleProvider } from '@/lib/i18n/locale-context'
 
 const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
@@ -22,8 +23,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} bg-background`}>
-      <body>{children}</body>
+    <html lang="sk" className={`${geistSans.variable} ${geistMono.variable} bg-background`}>
+      <body>
+        <LocaleProvider>{children}</LocaleProvider>
+      </body>
     </html>
   )
 }

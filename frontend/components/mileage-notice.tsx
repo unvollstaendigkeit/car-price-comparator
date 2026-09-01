@@ -2,6 +2,7 @@
 
 import type { MileageMatch } from "@/lib/types"
 import { cn, fmtKm } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
 
 /** Compact "118k km" style for tight banners. Falls back to fmtKm for small values. */
 function fmtKmShort(v: number | null | undefined): string {
@@ -20,16 +21,9 @@ export interface MileageNoticeProps {
   submittedKm?: number | null
   /** 'lower' | 'higher' — comparables vs the submitted car. */
   direction?: "lower" | "higher" | "same" | "unknown"
-  /** Backend-authored sentence; used as an accessible/secondary description. */
+  /** Backend-authored English sentence - kept for API compat, never rendered (see lib/warning-copy.ts's rationale: backend prose never crosses into UI copy; this component composes its own localized text from the structured fields instead). */
   note?: string
   className?: string
-}
-
-const HEADLINE: Record<Exclude<MileageMatch, "good">, string> = {
-  very_large: "Mileage mismatch",
-  large: "Mileage differs materially",
-  moderate: "Mileage differs somewhat",
-  unknown: "Mileage not verified",
 }
 
 /**
@@ -47,9 +41,9 @@ export function MileageNotice({
   compP75,
   submittedKm,
   direction,
-  note,
   className,
 }: MileageNoticeProps) {
+  const t = useT()
   // Good match: a quiet, reassuring confirmation — no alarm needed.
   if (match === "good") {
     return (
@@ -60,7 +54,7 @@ export function MileageNotice({
         )}
       >
         <span aria-hidden>✓</span>
-        Mileage closely matches comparable listings
+        {t.mileage.goodMatch}
       </p>
     )
   }
@@ -74,20 +68,26 @@ export function MileageNotice({
       ? "border-border bg-surface text-muted"
       : "border-caution/30 bg-caution/10 text-caution"
 
-  const dirWord = direction === "lower" ? "lower" : direction === "higher" ? "higher" : "different"
+  const dirWord = direction === "lower" ? t.mileage.dirLower : direction === "higher" ? t.mileage.dirHigher : t.mileage.dirDifferent
 
   // Context line: comparable range vs this car, in plain language.
   const rangeKnown = compP25 !== null && compP25 !== undefined && compP75 !== null && compP75 !== undefined
   const context =
     isUnknown
-      ? note || "Comparable mileage was unavailable, so mileage similarity could not be checked."
-      : `Comparable listings: ${rangeKnown ? `${fmtKmShort(compP25)}–${fmtKmShort(compP75)}` : fmtKmShort(compMedian)}` +
-        `${submittedKm !== null && submittedKm !== undefined ? ` · This car: ${fmtKmShort(submittedKm)}` : ""}`
+      ? t.mileage.unknownFallback
+      : `${t.mileage.comparableListings} ${rangeKnown ? `${fmtKmShort(compP25)}–${fmtKmShort(compP75)}` : fmtKmShort(compMedian)}` +
+        `${submittedKm !== null && submittedKm !== undefined ? ` · ${t.mileage.thisCar} ${fmtKmShort(submittedKm)}` : ""}`
 
+  const hasMedianVsSubmitted =
+    compMedian !== null && compMedian !== undefined && submittedKm !== null && submittedKm !== undefined
   const lead = isUnknown
     ? ""
-    : `Most comparable cars have ${match === "very_large" ? "significantly " : ""}${dirWord} mileage than this vehicle` +
-      `${compMedian !== null && compMedian !== undefined && submittedKm !== null && submittedKm !== undefined ? ` (median ${fmtKm(compMedian)} vs. ${fmtKm(submittedKm)}).` : "."}`
+    : t.mileage.lead(
+        dirWord,
+        match === "very_large",
+        hasMedianVsSubmitted ? fmtKm(compMedian) : null,
+        hasMedianVsSubmitted ? fmtKm(submittedKm) : null,
+      )
 
   return (
     <div
@@ -96,7 +96,7 @@ export function MileageNotice({
     >
       <p className="flex items-center gap-1.5 font-semibold">
         <span aria-hidden>{isUnknown ? "•" : "⚠"}</span>
-        {HEADLINE[match]}
+        {t.mileage.headline[match]}
       </p>
       {lead && <p className="leading-relaxed opacity-90">{lead}</p>}
       <p className="font-mono text-[12px] tabular-nums opacity-80">{context}</p>
@@ -106,18 +106,19 @@ export function MileageNotice({
 
 /** Small inline pill for dense tables. */
 export function MileageBadge({ match, className }: { match: MileageMatch; className?: string }) {
+  const t = useT()
   if (match === "good") {
     return (
-      <span className={cn("text-[12px] text-positive", className)} title="Mileage closely matches comparables">
-        ✓ mileage
+      <span className={cn("text-[12px] text-positive", className)} title={t.mileage.badgeGoodTitle}>
+        {t.mileage.badgeGood}
       </span>
     )
   }
   const label: Record<Exclude<MileageMatch, "good">, string> = {
-    very_large: "⚠ mileage mismatch",
-    large: "⚠ mileage differs",
-    moderate: "mileage differs",
-    unknown: "mileage n/a",
+    very_large: t.mileage.badgeVeryLarge,
+    large: t.mileage.badgeLarge,
+    moderate: t.mileage.badgeModerate,
+    unknown: t.mileage.badgeUnknown,
   }
   const serious = match === "very_large" || match === "large"
   return (

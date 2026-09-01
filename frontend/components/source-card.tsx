@@ -3,6 +3,7 @@
 import type { SourceResult } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtPct, fmtPctPlain, tierLabel, valuationTone } from "@/lib/format"
 import { sampleWarningText } from "@/lib/warning-copy"
+import { useT } from "@/lib/i18n/use-t"
 import { ComparablesTable } from "./comparables-table"
 import { Disclosure } from "./disclosure"
 import { MileageNotice } from "./mileage-notice"
@@ -21,6 +22,7 @@ export function SourceCard({
   data: SourceResult
   askingPriceEur?: number | null
 }) {
+  const t = useT()
   const meta = SOURCE_META[sourceKey] ?? { name: sourceKey, host: "" }
   const hasRetrievalError = Boolean(data.retrieval_issue)
   // Only a genuinely empty result gets the placeholder. Any listing at all is
@@ -31,60 +33,53 @@ export function SourceCard({
   const pct = data.undervaluation_pct
   const tone = valuationTone(pct)
   const toneCls = tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-muted"
-  const toneLabel = tone === "positive" ? "below market" : tone === "negative" ? "above market" : "at market"
+  const toneLabel = tone === "positive" ? t.diff.belowMarket : tone === "negative" ? t.diff.aboveMarket : t.diff.atMarket
   // Median relative to the user's asking price. Below market => median sits
   // above asking; above market => median sits below asking. Uses existing
   // values only (magnitude + tone-derived direction), no recalculation.
   const diffAbs = data.price_difference_eur !== null && data.price_difference_eur !== undefined
     ? Math.abs(data.price_difference_eur)
     : null
-  const diffDir = tone === "positive" ? "above your asking price" : tone === "negative" ? "below your asking price" : "vs. your asking price"
+  const diffDir = tone === "positive" ? t.card.aboveAsking : tone === "negative" ? t.card.belowAsking : t.card.vsAsking
 
   return (
-    <section className="flex flex-col rounded-lg border border-border bg-surface" aria-label={`${meta.name} result`}>
+    <section className="flex flex-col rounded-lg border border-border bg-surface" aria-label={t.card.resultAriaLabel(meta.name)}>
       {/* Header */}
       <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-accent" aria-hidden />
           <h3 className="text-[15px] font-semibold text-foreground">{meta.name}</h3>
         </div>
-        {!hasRetrievalError && (
-          <span className="text-[13px] text-faint">
-            {data.comparable_count} comparable{data.comparable_count === 1 ? "" : "s"}
-          </span>
-        )}
+        {!hasRetrievalError && <span className="text-[13px] text-faint">{t.count.comparables(data.comparable_count)}</span>}
       </header>
 
       {/* Body */}
       {hasRetrievalError ? (
         <div className="flex flex-1 flex-col gap-3 px-5 py-6">
           <div>
-            <p className="text-lg font-semibold text-danger">Couldn&apos;t fetch listings</p>
+            <p className="text-lg font-semibold text-danger">{t.card.fetchFailedTitle}</p>
             <p className="mt-1 text-sm text-muted">
               {data.retrieval_issue?.reason === "timeout"
-                ? `${meta.name} took too long to respond — this is a temporary fetch problem, not an absence of comparable cars.`
-                : `${meta.name} couldn't be reached — this is a temporary fetch problem, not an absence of comparable cars.`}
+                ? t.card.fetchFailedTimeout(meta.name)
+                : t.card.fetchFailedBlocked(meta.name)}
             </p>
           </div>
           {data.retrieval_error && (
-            <Disclosure summary="Show error detail">
+            <Disclosure summary={t.card.showErrorDetail}>
               <p className="text-[13px] text-faint">{data.retrieval_error}</p>
             </Disclosure>
           )}
         </div>
       ) : hasNoComparables ? (
         <div className="flex flex-1 flex-col gap-2 px-5 py-6">
-          <p className="text-lg font-semibold text-muted">No comparable cars found</p>
-          <p className="text-sm text-faint">
-            No listings matched this exact spec on {meta.name}. This is an absence of matching cars, not a fetch
-            failure.
-          </p>
+          <p className="text-lg font-semibold text-muted">{t.card.noneFoundTitle}</p>
+          <p className="text-sm text-faint">{t.card.noneFoundBody(meta.name)}</p>
         </div>
       ) : (
         <>
           {/* Hero: the median asking price is the centerpiece */}
           <div className="px-5 py-5">
-            <p className="text-[13px] uppercase tracking-wide text-faint">Median asking price</p>
+            <p className="text-[13px] uppercase tracking-wide text-faint">{t.card.medianAskingPrice}</p>
             <p className="mt-1 font-mono text-4xl font-semibold leading-none tabular-nums text-foreground">
               {fmtEur(data.median_asking_eur)}
             </p>
@@ -99,7 +94,7 @@ export function SourceCard({
                 <span className="text-[15px] text-muted">
                   <span className={toneCls}>{fmtPctPlain(pct)} {toneLabel}</span>
                   {askingPriceEur !== null && askingPriceEur !== undefined && (
-                    <span className="text-faint"> · your asking {fmtEur(askingPriceEur)}</span>
+                    <span className="text-faint"> · {t.card.yourAsking} {fmtEur(askingPriceEur)}</span>
                   )}
                 </span>
               </div>
@@ -125,45 +120,45 @@ export function SourceCard({
           {isThinSample && (
             <p className="flex items-center gap-1.5 border-t border-border bg-caution/10 px-5 py-2.5 text-[13px] text-caution">
               <span aria-hidden>⚠</span>
-              Small sample — {data.comparable_count} comparable car{data.comparable_count === 1 ? "" : "s"}
+              {t.card.smallSample} — {t.count.comparables(data.comparable_count)}
             </p>
           )}
 
           {/* Transparency, tucked away */}
           <div className="flex flex-col gap-2.5 border-t border-border px-5 py-3.5">
-            <Disclosure summary="Comparison details">
+            <Disclosure summary={t.card.comparisonDetails}>
               <dl className="flex flex-col gap-1.5 text-[13px]">
-                <Row label="Match tier" value={tierLabel(data.tier)} />
+                <Row label={t.card.matchTier} value={tierLabel(data.tier, t.tier)} />
                 <Row
-                  label="Price range (P25–P75)"
+                  label={t.card.priceRange}
                   value={`${fmtEur(data.market_p25_eur)} – ${fmtEur(data.market_p75_eur)}`}
                 />
                 {data.mileage && data.mileage.comp_km_median !== null && (
                   <>
-                    <Row label="Comparable mileage (median)" value={fmtKm(data.mileage.comp_km_median)} />
+                    <Row label={t.card.comparableMileageMedian} value={fmtKm(data.mileage.comp_km_median)} />
                     <Row
-                      label="Comparable mileage (P25–P75)"
+                      label={t.card.comparableMileageRange}
                       value={`${fmtKm(data.mileage.comp_km_p25)} – ${fmtKm(data.mileage.comp_km_p75)}`}
                     />
-                    <Row label="This car's mileage" value={fmtKm(data.mileage.submitted_km)} />
+                    <Row label={t.card.thisCarsMileage} value={fmtKm(data.mileage.submitted_km)} />
                   </>
                 )}
-                <Row label="Comparable cars" value={String(data.comparable_count)} />
+                <Row label={t.card.comparableCars} value={String(data.comparable_count)} />
                 {data.outliers_trimmed > 0 && (
-                  <Row label="Outliers trimmed" value={String(data.outliers_trimmed)} />
+                  <Row label={t.card.outliersTrimmed} value={String(data.outliers_trimmed)} />
                 )}
                 {data.unknown_year_km_frac > 0 && (
-                  <Row label="Missing year/km" value={fmtPct(data.unknown_year_km_frac * 100, 0)} />
+                  <Row label={t.card.missingYearKm} value={fmtPct(data.unknown_year_km_frac * 100, 0)} />
                 )}
                 {data.sample_warnings.map((w) => (
                   <p key={w.code} className="mt-1 text-caution">
-                    {sampleWarningText(w)}
+                    {sampleWarningText(t, w)}
                   </p>
                 ))}
               </dl>
             </Disclosure>
 
-            <Disclosure summary={`Show comparable listings (${data.comparables.length})`} tone="accent">
+            <Disclosure summary={t.card.showComparableListings(data.comparables.length)} tone="accent">
               <div className="-mx-5 border-t border-border">
                 <ComparablesTable rows={data.comparables} />
               </div>

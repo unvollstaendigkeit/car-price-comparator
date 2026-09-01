@@ -3,17 +3,22 @@
 import { useState } from "react"
 import type { InventoryReport, InventoryRow, InventoryRowStatus } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtYear } from "@/lib/format"
+import { useT } from "@/lib/i18n/use-t"
+import type { Dictionary } from "@/lib/i18n/dictionaries"
 
 type Filter = "all" | InventoryRowStatus
 
-const STATUS_META: Record<InventoryRowStatus, { label: string; cls: string }> = {
-  ready: { label: "Ready", cls: "bg-positive-soft/50 text-positive" },
-  sold: { label: "Sold", cls: "bg-surface-2 text-faint" },
-  review: { label: "Needs review", cls: "bg-negative-soft/50 text-caution" },
+function statusMeta(t: Dictionary): Record<InventoryRowStatus, { label: string; cls: string }> {
+  return {
+    ready: { label: t.inventory.reviewTable.statusReady, cls: "bg-positive-soft/50 text-positive" },
+    sold: { label: t.inventory.reviewTable.statusSold, cls: "bg-surface-2 text-faint" },
+    review: { label: t.inventory.reviewTable.statusReview, cls: "bg-negative-soft/50 text-caution" },
+  }
 }
 
 function StatusPill({ status }: { status: InventoryRowStatus }) {
-  const m = STATUS_META[status]
+  const t = useT()
+  const m = statusMeta(t)[status]
   return (
     <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium", m.cls)}>
       {m.label}
@@ -23,15 +28,16 @@ function StatusPill({ status }: { status: InventoryRowStatus }) {
 
 /** Dealer inventory review table. Display-only — no scraping is triggered. */
 export function InventoryReviewTable({ report }: { report: InventoryReport }) {
+  const t = useT()
   const [filter, setFilter] = useState<Filter>("all")
   const { rows, counts } = report
 
   const problems = counts.review
   const tabs: { key: Filter; label: string; n: number }[] = [
-    { key: "all", label: "All", n: counts.total_rows },
-    { key: "ready", label: "Ready", n: counts.valid_for_comparison },
-    { key: "review", label: "Needs review", n: counts.review },
-    { key: "sold", label: "Sold", n: counts.sold_or_unavailable },
+    { key: "all", label: t.inventory.reviewTable.all, n: counts.total_rows },
+    { key: "ready", label: t.inventory.reviewTable.statusReady, n: counts.valid_for_comparison },
+    { key: "review", label: t.inventory.reviewTable.statusReview, n: counts.review },
+    { key: "sold", label: t.inventory.reviewTable.statusSold, n: counts.sold_or_unavailable },
   ]
 
   const visible = filter === "all" ? rows : rows.filter((r) => r.status_label === filter)
@@ -63,10 +69,7 @@ export function InventoryReviewTable({ report }: { report: InventoryReport }) {
       {problems > 0 && (
         <p className="flex items-start gap-1.5 text-[13px] text-caution">
           <span aria-hidden>⚠</span>
-          <span>
-            {problems} {problems === 1 ? "row needs" : "rows need"} attention before valuation. They&apos;re kept in the
-            list, not discarded — fix them in your spreadsheet and re-upload, or continue without them.
-          </span>
+          <span>{t.inventory.reviewTable.needAttention(problems)}</span>
         </p>
       )}
 
@@ -75,14 +78,14 @@ export function InventoryReviewTable({ report }: { report: InventoryReport }) {
           <thead>
             <tr className="border-b border-border bg-surface-2 text-left text-faint">
               <Th className="w-10 text-right">#</Th>
-              <Th>Brand</Th>
-              <Th>Model</Th>
-              <Th>Variant</Th>
-              <Th className="text-right">Year</Th>
-              <Th>Fuel</Th>
-              <Th className="text-right">KM</Th>
-              <Th className="text-right">Price</Th>
-              <Th>Status</Th>
+              <Th>{t.inventory.reviewTable.colBrand}</Th>
+              <Th>{t.inventory.reviewTable.colModel}</Th>
+              <Th>{t.inventory.reviewTable.colVariant}</Th>
+              <Th className="text-right">{t.inventory.reviewTable.colYear}</Th>
+              <Th>{t.inventory.reviewTable.colFuel}</Th>
+              <Th className="text-right">{t.inventory.reviewTable.colKm}</Th>
+              <Th className="text-right">{t.inventory.reviewTable.colPrice}</Th>
+              <Th>{t.inventory.reviewTable.colStatus}</Th>
             </tr>
           </thead>
           <tbody>
@@ -94,13 +97,14 @@ export function InventoryReviewTable({ report }: { report: InventoryReport }) {
       </div>
 
       {visible.length === 0 && (
-        <p className="py-4 text-center text-[13px] text-faint">No rows in this category.</p>
+        <p className="py-4 text-center text-[13px] text-faint">{t.inventory.reviewTable.noRows}</p>
       )}
     </div>
   )
 }
 
 function Row({ r }: { r: InventoryRow }) {
+  const t = useT()
   const attention = r.status_label === "review"
   const cell = (v: string | null | undefined, extra?: string) => (
     <Td className={extra}>{v && v !== "—" ? v : <span className="text-faint">—</span>}</Td>
@@ -122,7 +126,7 @@ function Row({ r }: { r: InventoryRow }) {
         ) : r.status_label === "sold" ? (
           <span className="text-faint">{r.price_original || "—"}</span>
         ) : (
-          <span className="text-caution">missing</span>
+          <span className="text-caution">{t.inventory.reviewTable.priceMissing}</span>
         )}
       </Td>
       <Td>

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import type { CarInput, CompareResult, Stage } from "@/lib/types"
 import { streamCompare } from "@/lib/api"
+import { useT } from "@/lib/i18n/use-t"
 
 /**
  * Drives one streamed single-car comparison. Extracted out of
@@ -11,6 +12,7 @@ import { streamCompare } from "@/lib/api"
  * error handling instead of re-implementing it.
  */
 export function useCompareRun() {
+  const t = useT()
   const [stage, setStage] = useState<Stage | null>(null)
   const [counts, setCounts] = useState<{ autobazar?: number; bazos?: number }>({})
   const [result, setResult] = useState<CompareResult | null>(null)
@@ -45,13 +47,13 @@ export function useCompareRun() {
           if (e.stage === "autobazar_done") setCounts((c) => ({ ...c, autobazar: e.raw_count }))
           if (e.stage === "bazos_done") setCounts((c) => ({ ...c, bazos: e.raw_count }))
           if (e.stage === "result" && e.result) setResult(e.result)
-          if (e.stage === "error") setError(e.message ?? "Comparison failed")
+          if (e.stage === "error") setError(e.message ?? t.errors.comparisonFailed)
         },
         controller.signal,
       )
     } catch (err) {
       if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : "Request failed")
+        setError(err instanceof Error ? err.message : t.errors.requestFailed)
         setStage("error")
       }
     }

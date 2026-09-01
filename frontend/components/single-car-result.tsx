@@ -5,27 +5,11 @@ import { SOURCE_META } from "@/lib/types"
 import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, tierLabel } from "@/lib/format"
 import { exportSingleCarReport } from "@/lib/exports"
 import { confidenceWarningText } from "@/lib/warning-copy"
+import { useT } from "@/lib/i18n/use-t"
+import type { Dictionary } from "@/lib/i18n/dictionaries"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
 import { Disclosure } from "./disclosure"
-
-const AGREEMENT_COPY: Record<string, { label: string; cls: string; note: string }> = {
-  agree: {
-    label: "sources agree",
-    cls: "text-positive",
-    note: "Both marketplaces produced closely aligned median prices.",
-  },
-  meaningful: {
-    label: "limited agreement",
-    cls: "text-caution",
-    note: "The two marketplaces differ enough to treat the estimate with care.",
-  },
-  large: {
-    label: "sources disagree",
-    cls: "text-negative",
-    note: "Large gap between marketplaces — inspect the comparables on each before trusting either.",
-  },
-}
 
 function isUsable(s: SourceResult): boolean {
   return !s.retrieval_issue && !s.insufficient && s.comparable_count > 0 && s.undervaluation_pct !== null
@@ -34,13 +18,11 @@ function isUsable(s: SourceResult): boolean {
 // Plain-language stand-in for the backend's "tier reached: strict (best
 // sample n=1)" style jargon: which match tier this source's estimate came
 // from, and how many comparable listings backed it.
-function tierSentence(label: string, s: SourceResult): string | null {
+function tierSentence(t: Dictionary, label: string, s: SourceResult): string | null {
   if (!s.tier || s.comparable_count === 0) return null
-  const n = s.comparable_count
-  const listings = n === 1 ? "listing" : "listings"
   const tier = s.tier.toLowerCase()
-  const found = tier === "strict" ? "Strict matches were found" : `Only ${tierLabel(s.tier).toLowerCase()} matches were found`
-  return `${label}: ${found} — ${n} comparable ${listings}.`
+  const found = tier === "strict" ? t.result.strictMatchesFound : t.result.onlyTierMatchesFound(tierLabel(s.tier, t.tier))
+  return `${label}: ${found} — ${t.count.comparables(s.comparable_count)}.`
 }
 
 export function SingleCarResult({
@@ -53,39 +35,43 @@ export function SingleCarResult({
   vin?: string
   onClear?: () => void
 }) {
+  const t = useT()
   const { car, sources, cross_source, confidence } = result
-  const agreement = cross_source.agreement ? AGREEMENT_COPY[cross_source.agreement] : null
+  const AGREEMENT_CLS: Record<string, string> = { agree: "text-positive", meaningful: "text-caution", large: "text-negative" }
+  const agreement = cross_source.agreement
+    ? { ...t.result.agreement[cross_source.agreement], cls: AGREEMENT_CLS[cross_source.agreement] }
+    : null
 
   // Human one-liner about evidence coverage (derived from existing flags only).
   const abUsable = isUsable(sources.autobazar)
   const bzUsable = isUsable(sources.bazos)
   const coverage =
     abUsable && bzUsable
-      ? "Both marketplaces had enough comparable cars to estimate the market."
+      ? t.result.coverage.both
       : abUsable
-        ? "Only Autobazar.eu had enough comparable cars to estimate the market."
+        ? t.result.coverage.onlyAutobazar
         : bzUsable
-          ? "Only Bazoš.sk had enough comparable cars to estimate the market."
-          : "Neither marketplace had enough comparable cars for a reliable estimate."
+          ? t.result.coverage.onlyBazos
+          : t.result.coverage.neither
 
   const specLine = [fmtYear(car.year), car.fuel, fmtKm(car.km), car.body_type, vin, car.transmission]
     .filter(Boolean)
     .join(" · ")
 
   const tierSentences = [
-    tierSentence(SOURCE_META.autobazar.label, sources.autobazar),
-    tierSentence(SOURCE_META.bazos.label, sources.bazos),
+    tierSentence(t, SOURCE_META.autobazar.label, sources.autobazar),
+    tierSentence(t, SOURCE_META.bazos.label, sources.bazos),
   ].filter((s): s is string => s !== null)
 
   return (
     <div className="flex flex-col gap-5">
       {/* 0 — Result actions: secondary to the valuation, but obvious */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] uppercase tracking-wide text-faint">Valuation result</p>
+        <p className="text-[13px] uppercase tracking-wide text-faint">{t.result.label}</p>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => exportSingleCarReport(result)}
+            onClick={() => exportSingleCarReport(result, t)}
             className="inline-flex items-center gap-1.5 rounded-md border border-accent/50 px-3 py-1.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent/10"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
@@ -97,7 +83,7 @@ export function SingleCarResult({
                 strokeLinejoin="round"
               />
             </svg>
-            Export result
+            {t.result.export}
           </button>
           {onClear && (
             <button
@@ -105,7 +91,7 @@ export function SingleCarResult({
               onClick={onClear}
               className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
             >
-              Clear
+              {t.result.clear}
             </button>
           )}
         </div>
@@ -125,7 +111,7 @@ export function SingleCarResult({
           {specLine && <p className="mt-1 text-[15px] text-muted">{specLine}</p>}
         </div>
         <div className="text-right">
-          <p className="text-[13px] uppercase tracking-wide text-faint">Asking price</p>
+          <p className="text-[13px] uppercase tracking-wide text-faint">{t.result.askingPrice}</p>
           <p className="font-mono text-2xl tabular-nums text-foreground">{fmtEur(car.asking_price_eur)}</p>
         </div>
       </div>
@@ -137,14 +123,14 @@ export function SingleCarResult({
           <span className="text-sm text-muted">{coverage}</span>
           {agreement && cross_source.median_spread_pct !== null && (
             <span className={cn("text-sm", agreement.cls)}>
-              · {agreement.label} ({fmtPctPlain(cross_source.median_spread_pct, 0)} spread)
+              · {agreement.label} ({fmtPctPlain(cross_source.median_spread_pct, 0)} {t.result.spread})
             </span>
           )}
         </div>
 
         {(tierSentences.length > 0 || confidence.warnings.length > 0 || agreement) && (
           <div className="border-t border-border px-5 py-3">
-            <Disclosure summary="Why this confidence?">
+            <Disclosure summary={t.result.whyConfidence}>
               <div className="flex flex-col gap-2 text-[13px] text-muted">
                 {tierSentences.length > 0 && (
                   <ul className="flex flex-col gap-1">
@@ -160,7 +146,7 @@ export function SingleCarResult({
                         <span aria-hidden className="mt-0.5">
                           ⚠
                         </span>
-                        <span>{confidenceWarningText(w)}</span>
+                        <span>{confidenceWarningText(t, w)}</span>
                       </li>
                     ))}
                   </ul>

@@ -4,35 +4,36 @@
  * lib/types.ts). This is the ONLY place these codes get turned into text -
  * the backend never sends prose, so a warning can't accidentally surface
  * exception text, ratios, or "n=1"-style jargon to a user.
+ *
+ * All wording itself lives in the `t` dictionary passed in (lib/i18n) - this
+ * module just resolves a code (+ source name) to the right dictionary entry.
  */
+import type { Dictionary } from "./i18n/dictionaries"
 import type { ConfidenceWarning, SampleWarning, SourceKey } from "./types"
 import { SOURCE_META } from "./types"
 
-export function sampleWarningText(w: SampleWarning): string {
+export function sampleWarningText(t: Dictionary, w: SampleWarning): string {
   switch (w.code) {
     case "single_listing":
-      return "Based on a single listing — treat this as a rough guide, not a firm number."
+      return t.warnings.singleListing
     case "implausible_ratio":
-      return "The listings found didn't look like real matches for this car, so this estimate has been hidden."
+      return t.warnings.implausibleRatio
     default:
-      return "This estimate may be unreliable."
+      return t.warnings.unreliable
   }
 }
 
-export function retrievalFailureText(sourceKey: SourceKey): string {
-  const name = SOURCE_META[sourceKey].label
-  return `${name} didn't respond in time, so it couldn't be checked for this car.`
+export function retrievalFailureText(t: Dictionary, sourceKey: SourceKey): string {
+  return t.warnings.retrievalTimeout(SOURCE_META[sourceKey].label)
 }
 
-export function confidenceWarningText(w: ConfidenceWarning): string {
+export function confidenceWarningText(t: Dictionary, w: ConfidenceWarning): string {
   if (w.code === "source_disagreement") {
-    return `${SOURCE_META.autobazar.label} and ${SOURCE_META.bazos.label} show quite different prices for this car (about ${Math.round(w.spread_pct)}% apart) — worth checking both before trusting either number.`
+    return t.warnings.sourceDisagreement(SOURCE_META.autobazar.label, SOURCE_META.bazos.label, Math.round(w.spread_pct))
   }
   const name = SOURCE_META[w.source].label
   if (w.code === "retrieval_failed") {
-    return w.reason === "timeout"
-      ? `${name} didn't respond in time, so it couldn't be checked for this car.`
-      : `${name} couldn't be reached, so it couldn't be checked for this car.`
+    return w.reason === "timeout" ? t.warnings.retrievalTimeout(name) : t.warnings.retrievalBlocked(name)
   }
-  return `${name}: ${sampleWarningText(w)}`
+  return `${name}: ${sampleWarningText(t, w)}`
 }
