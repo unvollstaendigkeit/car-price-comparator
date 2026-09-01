@@ -135,6 +135,8 @@ export interface CarInput {
   power_kw?: number
   transmission?: string
   body_type?: string
+  /** Passthrough only — detected from a pasted row, never sent to matching logic. */
+  vin?: string
 }
 
 /* ---- paste-a-row parsing (backend row_parser.parse_pasted_row) ---- */

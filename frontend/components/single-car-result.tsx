@@ -1,7 +1,8 @@
 "use client"
 
 import type { CompareResult, SourceResult } from "@/lib/types"
-import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear } from "@/lib/format"
+import { SOURCE_META } from "@/lib/types"
+import { cn, fmtEur, fmtKm, fmtPctPlain, fmtYear, tierLabel } from "@/lib/format"
 import { exportSingleCarReport } from "@/lib/exports"
 import { ConfidenceBadge } from "./badges"
 import { SourceCard } from "./source-card"
@@ -29,7 +30,36 @@ function isUsable(s: SourceResult): boolean {
   return !s.retrieval_error && !s.insufficient && s.comparable_count > 0 && s.undervaluation_pct !== null
 }
 
-export function SingleCarResult({ result, onClear }: { result: CompareResult; onClear?: () => void }) {
+// Backend warnings are prefixed "autobazar: ..." / "bazos: ..." — swap in the
+// full marketplace name so nothing reads like an internal shorthand.
+function prettifyWarning(w: string): string {
+  if (w.startsWith("autobazar: ")) return `${SOURCE_META.autobazar.label}: ${w.slice("autobazar: ".length)}`
+  if (w.startsWith("bazos: ")) return `${SOURCE_META.bazos.label}: ${w.slice("bazos: ".length)}`
+  return w
+}
+
+// Plain-language stand-in for the backend's "tier reached: strict (best
+// sample n=1)" style jargon: which match tier this source's estimate came
+// from, and how many comparable listings backed it.
+function tierSentence(label: string, s: SourceResult): string | null {
+  if (!s.tier || s.comparable_count === 0) return null
+  const n = s.comparable_count
+  const listings = n === 1 ? "listing" : "listings"
+  const tier = s.tier.toLowerCase()
+  const found = tier === "strict" ? "Strict matches were found" : `Only ${tierLabel(s.tier).toLowerCase()} matches were found`
+  return `${label}: ${found} — ${n} comparable ${listings}.`
+}
+
+export function SingleCarResult({
+  result,
+  vin,
+  onClear,
+}: {
+  result: CompareResult
+  /** Not part of the backend's CarEcho — passed through separately from what was submitted. */
+  vin?: string
+  onClear?: () => void
+}) {
   const { car, sources, cross_source, confidence } = result
   const agreement = cross_source.agreement ? AGREEMENT_COPY[cross_source.agreement] : null
 
@@ -45,9 +75,14 @@ export function SingleCarResult({ result, onClear }: { result: CompareResult; on
           ? "Only Bazoš.sk had enough comparable cars to estimate the market."
           : "Neither marketplace had enough comparable cars for a reliable estimate."
 
-  const specLine = [fmtYear(car.year), car.fuel, fmtKm(car.km), car.transmission, car.body_type]
+  const specLine = [fmtYear(car.year), car.fuel, fmtKm(car.km), car.body_type, vin, car.transmission]
     .filter(Boolean)
     .join(" · ")
+
+  const tierSentences = [
+    tierSentence(SOURCE_META.autobazar.label, sources.autobazar),
+    tierSentence(SOURCE_META.bazos.label, sources.bazos),
+  ].filter((s): s is string => s !== null)
 
   return (
     <div className="flex flex-col gap-5">
@@ -88,8 +123,10 @@ export function SingleCarResult({ result, onClear }: { result: CompareResult; on
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
             {car.brand} {car.model}
-            {car.variant_engine ? (
-              <span className="ml-2 font-mono text-base font-normal text-muted">{car.variant_engine}</span>
+            {car.variant || car.variant_engine ? (
+              <span className="ml-2 font-mono text-base font-normal text-muted">
+                {car.variant || car.variant_engine}
+              </span>
             ) : null}
           </h2>
           {specLine && <p className="mt-1 text-[15px] text-muted">{specLine}</p>}
@@ -112,11 +149,17 @@ export function SingleCarResult({ result, onClear }: { result: CompareResult; on
           )}
         </div>
 
-        {(confidence.reasons || confidence.warnings.length > 0 || agreement) && (
+        {(tierSentences.length > 0 || confidence.warnings.length > 0 || agreement) && (
           <div className="border-t border-border px-5 py-3">
             <Disclosure summary="Why this confidence?">
               <div className="flex flex-col gap-2 text-[13px] text-muted">
-                {confidence.reasons && <p>{confidence.reasons}</p>}
+                {tierSentences.length > 0 && (
+                  <ul className="flex flex-col gap-1">
+                    {tierSentences.map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                )}
                 {confidence.warnings.length > 0 && (
                   <ul className="flex flex-col gap-1">
                     {confidence.warnings.map((w, i) => (
@@ -124,7 +167,7 @@ export function SingleCarResult({ result, onClear }: { result: CompareResult; on
                         <span aria-hidden className="mt-0.5">
                           ⚠
                         </span>
-                        <span>{w}</span>
+                        <span>{prettifyWarning(w)}</span>
                       </li>
                     ))}
                   </ul>
@@ -141,16 +184,6 @@ export function SingleCarResult({ result, onClear }: { result: CompareResult; on
         <SourceCard sourceKey="autobazar" data={sources.autobazar} askingPriceEur={car.asking_price_eur} />
         <SourceCard sourceKey="bazos" data={sources.bazos} askingPriceEur={car.asking_price_eur} />
       </div>
-
-      {/* 7 — Methodology, out of the primary hierarchy */}
-      <Disclosure summary="How Carval calculates this" className="px-1">
-        <p className="max-w-2xl text-[13px] leading-relaxed text-faint">
-          Each marketplace is evaluated independently and shown separately — Carval never blends them into a single
-          number. &quot;Below market&quot; means the car is priced under that market&apos;s median asking price (a
-          potential find); &quot;above market&quot; means it&apos;s priced higher. The headline figure uses the
-          marketplace with the stronger comparable sample.
-        </p>
-      </Disclosure>
     </div>
   )
 }

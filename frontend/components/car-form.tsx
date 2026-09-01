@@ -1,10 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import type { CarInput, ParsedField, ParsedRow } from "@/lib/types"
+import type { CarInput, ParsedField } from "@/lib/types"
 import { parseRow } from "@/lib/api"
 import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
-import { Disclosure } from "./disclosure"
 
 const FUELS = ["", "Petrol", "Diesel", "Hybrid", "PHEV", "Electric", "LPG", "CNG"]
 const TRANSMISSIONS = ["", "Manual", "Automatic"]
@@ -42,7 +41,7 @@ export function CarForm({
   onClear?: () => void
   busy: boolean
 }) {
-  const [mode, setMode] = useState<"manual" | "paste">("paste")
+  const [mode, setMode] = useState<"manual" | "paste" | "vin">("paste")
   const [form, setForm] = useState<CarInput>(empty)
 
   // paste-row state
@@ -50,9 +49,13 @@ export function CarForm({
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
   const [detected, setDetected] = useState<DetectMap>({})
-  const [extras, setExtras] = useState<ParsedRow["extras"]>({})
-  const [issues, setIssues] = useState<string[]>([])
-  const [parseMode, setParseMode] = useState<ParsedRow["mode"] | null>(null)
+  // VIN detected from a pasted row (backend row_parser extras) — not a form
+  // field, just shown in the "Detected vehicle" summary.
+  const [detectedVin, setDetectedVin] = useState<string | null>(null)
+
+  // VIN lookup state — UI only for now, not wired to a backend/external
+  // lookup yet.
+  const [vin, setVin] = useState("")
 
   const set = <K extends keyof CarInput>(key: K, value: CarInput[K]) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -86,9 +89,7 @@ export function CarForm({
       }
       setForm({ ...empty, ...parsed.car })
       setDetected(parsed.fields as DetectMap)
-      setExtras(parsed.extras ?? {})
-      setIssues(parsed.issues ?? [])
-      setParseMode(parsed.mode)
+      setDetectedVin(parsed.extras?.vin ?? null)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Parsing failed")
     } finally {
@@ -101,17 +102,17 @@ export function CarForm({
   const handleClear = () => {
     setForm(empty)
     setDetected({})
-    setExtras({})
-    setIssues([])
-    setParseMode(null)
+    setDetectedVin(null)
     setParseError(null)
     setPasteText("")
+    setVin("")
     setMode("paste")
     onClear?.()
   }
 
   const hasInput =
     pasteText.trim() !== "" ||
+    vin.trim() !== "" ||
     Object.values(form).some((v) => v !== "" && v !== undefined)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -125,27 +126,27 @@ export function CarForm({
       fuel: form.fuel || undefined,
       transmission: form.transmission || undefined,
       body_type: form.body_type?.trim() || undefined,
+      vin: detectedVin || undefined,
     })
   }
 
   const anyDetected = Object.keys(detected).length > 0
 
   // Human-readable "Detected vehicle" summary line.
-  const detectedTitle = [form.brand, form.model].filter(Boolean).join(" ")
-  const detectedSpec = [fmtYear(form.year), form.fuel, form.km ? fmtKm(form.km) : null, form.price ? fmtEur(form.price) : null]
+  const detectedTitle = [form.brand, form.model, form.variant].filter(Boolean).join(" ")
+  const detectedSpec = [
+    fmtYear(form.year),
+    form.fuel,
+    form.km ? fmtKm(form.km) : null,
+    form.body_type || null,
+    detectedVin,
+    form.transmission || null,
+  ]
     .filter((v) => v && v !== "—")
     .join(" · ")
 
   // Only warn when something genuinely important is missing or uncertain.
   const missingImportant = anyDetected && (!form.brand || !form.model || !form.year || !form.price)
-
-  // Raw, low-level parser output — kept for transparency, hidden by default.
-  const extraNotes = [
-    extras.vin ? `VIN: ${extras.vin}` : null,
-    extras.colour ? `Colour: ${extras.colour}` : null,
-    ...(extras.notes ?? []).map((n) => `Ignored: ${n}`),
-  ].filter(Boolean) as string[]
-  const hasDetails = extraNotes.length > 0 || issues.length > 0
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface">
@@ -158,10 +159,13 @@ export function CarForm({
           <ModeTab active={mode === "manual"} onClick={() => setMode("manual")}>
             Manual entry
           </ModeTab>
+          <ModeTab active={mode === "vin"} onClick={() => setMode("vin")}>
+            Search by VIN
+          </ModeTab>
         </div>
       </div>
 
-      {mode === "manual" ? (
+      {mode === "manual" && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
           <span className="mr-1 text-[13px] text-faint">Quick fill:</span>
           {EXAMPLES.map((ex) => (
@@ -171,6 +175,7 @@ export function CarForm({
               onClick={() => {
                 setForm({ ...empty, ...ex })
                 setDetected({})
+                setDetectedVin(null)
               }}
               className="rounded border border-border px-2.5 py-1 text-[13px] text-muted hover:border-border-strong hover:text-foreground"
             >
@@ -178,7 +183,9 @@ export function CarForm({
             </button>
           ))}
         </div>
-      ) : (
+      )}
+
+      {mode === "paste" && (
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
           <div className="flex flex-col gap-1">
             <h3 className="text-[15px] font-medium text-foreground">Paste a row</h3>
@@ -227,33 +234,38 @@ export function CarForm({
                   <span>Some details couldn&apos;t be detected. Please check the fields below.</span>
                 </p>
               )}
-
-              <p className="text-[13px] text-muted">Review and edit the fields below before comparing.</p>
-
-              {hasDetails && (
-                <Disclosure summary="Show detection details">
-                  <div className="flex flex-col gap-1.5 text-[13px] text-faint">
-                    {parseMode && (
-                      <p>
-                        Parsed as:{" "}
-                        <span className="text-muted">
-                          {parseMode === "header" ? "labelled columns" : "unlabelled row (inferred by content)"}
-                        </span>
-                      </p>
-                    )}
-                    {extraNotes.map((n, i) => (
-                      <p key={i}>{n}</p>
-                    ))}
-                    {issues.map((n, i) => (
-                      <p key={`i-${i}`} className="text-caution">
-                        {n}
-                      </p>
-                    ))}
-                  </div>
-                </Disclosure>
-              )}
             </div>
           )}
+        </div>
+      )}
+
+      {mode === "vin" && (
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[15px] font-medium text-foreground">Search by VIN</h3>
+            <p className="text-[13px] text-muted">
+              Paste a vehicle identification number to look up its details from an external registry. This lookup
+              isn&apos;t connected yet — for now, use Paste a row or Manual entry below.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              className="ab-input max-w-xs font-mono text-[13px] uppercase tracking-wide"
+              value={vin}
+              onChange={(e) => setVin(e.target.value.toUpperCase())}
+              placeholder="WVWZZZ6RZFY064440"
+              maxLength={17}
+            />
+            <button
+              type="button"
+              disabled
+              title="VIN lookup is coming soon"
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground opacity-40 disabled:cursor-not-allowed"
+            >
+              Look up VIN
+            </button>
+            <span className="text-[13px] text-faint">Coming soon</span>
+          </div>
         </div>
       )}
 
