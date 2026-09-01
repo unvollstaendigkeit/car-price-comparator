@@ -280,7 +280,18 @@ export function CarForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
+      <div className="relative grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
+        <span className="group absolute right-5 top-2.5 z-10 flex cursor-help items-center">
+          <span
+            aria-hidden
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-accent/60 text-[12px] font-semibold text-accent transition-colors group-hover:border-accent group-hover:text-foreground"
+          >
+            i
+          </span>
+          <span className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-max max-w-[260px] rounded-md bg-foreground px-2 py-1 text-[12px] font-normal leading-snug text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100">
+            {t.form.footerHint}
+          </span>
+        </span>
         <Field label={t.form.fields.brand} required mark={detected.brand}>
           <input
             className="ab-input"
@@ -367,8 +378,7 @@ export function CarForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-border px-5 py-4">
-        <p className="text-[13px] text-faint">{t.form.footerHint}</p>
+      <div className="flex items-center justify-end gap-4 border-t border-border px-5 py-4">
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -434,7 +444,7 @@ function Field({
     <label className="flex flex-col gap-1.5">
       <span className="flex items-center gap-1 text-[13px] font-medium text-muted">
         {label}
-        {required && <span className="ml-0.5 text-base font-bold leading-none text-accent">*</span>}
+        {required && <span className="ml-0.5 text-lg font-bold leading-none text-accent">*</span>}
       </span>
       <span className="relative flex items-center">
         {children}
