@@ -27,9 +27,7 @@ export const en = {
     tabs: { paste: "Paste a row", manual: "Manual entry", vin: "Search by VIN" },
     quickFill: "Quick fill:",
     paste: {
-      title: "Paste a row",
-      description:
-        "Copy one complete row from Excel or Google Sheets and paste it here. You don't need to copy the headers.",
+      title: "Paste a row from Excel or Google Sheets",
       placeholder: "Paste your row here…",
       detect: "Detect car",
       detecting: "Detecting…",
@@ -98,9 +96,7 @@ export const en = {
     clear: "Clear",
     submit: "Compare prices",
     submitting: "Comparing…",
-    lowConfidenceTitle: "Low-confidence guess — please verify",
-    detectedTitle: "Detected",
-    pleaseVerify: "Please verify",
+    verifyTooltip: "Verify the value detected from the row",
   },
   confidence: {
     high: "High confidence",

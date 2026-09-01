@@ -189,10 +189,7 @@ export function CarForm({
 
       {mode === "paste" && (
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
-          <div className="flex flex-col gap-1">
-            <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
-            <p className="text-[13px] text-muted">{t.form.paste.description}</p>
-          </div>
+          <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
           <textarea
             id="paste-row"
             className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
@@ -419,22 +416,21 @@ function Field({
     <label className="flex flex-col gap-1.5">
       <span className="flex items-center gap-1 text-[13px] font-medium text-muted">
         {label}
-        {required && <span className="text-accent">*</span>}
-        {mark?.detected && (
+        {required && <span className="ml-0.5 text-base font-bold leading-none text-accent">*</span>}
+      </span>
+      <span className="relative flex items-center">
+        {children}
+        {lowConf && (
           <span
-            className={"ml-auto h-1.5 w-1.5 rounded-full " + (lowConf ? "bg-caution" : "bg-accent")}
+            className="absolute right-2.5 cursor-help text-[13px] text-caution"
             aria-hidden="true"
-            title={lowConf ? t.form.lowConfidenceTitle : t.form.detectedTitle}
-          />
+            title={t.form.verifyTooltip}
+          >
+            ⚠
+          </span>
         )}
       </span>
-      {children}
-      {hint && !lowConf && <span className="text-[13px] text-faint">{hint}</span>}
-      {lowConf && (
-        <span className="flex items-center gap-1 text-[13px] text-caution">
-          <span aria-hidden>⚠</span> {t.form.pleaseVerify}
-        </span>
-      )}
+      {hint && <span className="text-[13px] text-faint">{hint}</span>}
     </label>
   )
 }

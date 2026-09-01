@@ -24,9 +24,7 @@ export const sk = {
     tabs: { paste: "Vložiť riadok", manual: "Vyplniť manuálne", vin: "Vyhľadať podľa VIN" },
     quickFill: "Rýchle vyplnenie:",
     paste: {
-      title: "Vložiť riadok",
-      description:
-        "Skopírujte jeden celý riadok z Excelu alebo Google Sheets a vložte ho sem. Hlavičky kopírovať nemusíte.",
+      title: "Vložte riadok z Excelu alebo Google Sheets",
       placeholder: "Sem vložte svoj riadok…",
       detect: "Rozpoznať auto",
       detecting: "Rozpoznávam…",
@@ -90,9 +88,7 @@ export const sk = {
     clear: "Vymazať",
     submit: "Porovnať ceny",
     submitting: "Porovnávam…",
-    lowConfidenceTitle: "Odhad s nízkou istotou — prosím, overte",
-    detectedTitle: "Rozpoznané",
-    pleaseVerify: "Prosím, overte",
+    verifyTooltip: "Overte hodnotu rozpoznanú z riadku",
   },
   confidence: {
     high: "Vysoká istota",
