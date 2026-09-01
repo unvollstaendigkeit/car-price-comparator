@@ -18,10 +18,14 @@ export default function Page() {
       <header className="flex flex-col gap-4 border-b border-border pb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-3xl font-semibold tracking-tight">
+            <button
+              type="button"
+              onClick={() => setMode("single")}
+              className="w-fit text-3xl font-semibold tracking-tight"
+            >
               <span className="text-foreground">Car</span>
               <span className="text-accent">val</span>
-            </span>
+            </button>
             <p className="text-[15px] text-muted">{t.header.tagline}</p>
           </div>
           <LocaleSwitcher />
