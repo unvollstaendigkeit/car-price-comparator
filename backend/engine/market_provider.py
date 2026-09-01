@@ -375,6 +375,38 @@ MARKET_COLLECTOR_DB_PATH = os.environ.get(
     os.path.join(MARKET_COLLECTOR_PATH, "data", "market_history.sqlite3"),
 )
 
+# --------------------------------------------------------------------------- #
+# CZ market -- routing placeholder only (2026-09-01), NOT a working data
+# source yet. No Czech collector/database exists; this constant exists so
+# main.py's market->db_path selection has somewhere to point once one does.
+# Deliberately points at a path that does not exist: MarketCollectorProvider
+# construction against it is expected to fail and fall back to the live
+# provider (see main.py's _build_market_provider), same degrade-gracefully
+# behavior as any other missing/corrupt DB. Not wired to any frontend UI.
+#
+# Planned CZ sources (decided, not yet built): auto.bazos.cz ("Bazoš" CZ --
+# same company/site family as auto.bazos.sk, so bazos_scraper.py likely
+# generalizes to it with a domain/TLD parameter) and sauto.cz ("S Auto" --
+# an entirely different site from Autobazar.eu, needs its own scraper/parser
+# from scratch, not a parameterization of autobazar_scraper.py). Building
+# either is real, source-specific work (see MarketCollectorProvider's own
+# brand-matching-quirks docstring above for how much per-source nuance a
+# collector ends up needing) -- out of scope until there's real CZ data to
+# develop and test against.
+MARKET_COLLECTOR_CZ_DB_PATH = os.environ.get(
+    "MARKET_COLLECTOR_CZ_DB_PATH",
+    os.path.join(MARKET_COLLECTOR_PATH, "data", "market_history_cz.sqlite3"),
+)
+
+# market code -> db_path, consulted by main.py's _build_market_provider.
+# "sk" (also used for the "en" locale, which reads the same SK data) is the
+# only one with real data today; "cz" resolves to a path that doesn't exist
+# yet and is expected to fall back to the live provider until it does.
+MARKET_DB_PATHS = {
+    "sk": MARKET_COLLECTOR_DB_PATH,
+    "cz": MARKET_COLLECTOR_CZ_DB_PATH,
+}
+
 NO_SNAPSHOT_ERR = "NO_SNAPSHOT: no completed FULL collection run available"
 
 

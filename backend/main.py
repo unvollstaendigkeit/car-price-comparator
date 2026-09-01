@@ -60,7 +60,7 @@ from inventory_api import (  # noqa: E402
     parse_upload,
 )
 from inventory_run import analyze_inventory  # noqa: E402
-from market_provider import PersistentCacheProvider, MarketCollectorProvider  # noqa: E402
+from market_provider import PersistentCacheProvider, MarketCollectorProvider, MARKET_DB_PATHS  # noqa: E402
 
 
 app = fastapi.FastAPI(title="Car Valuation API")
@@ -115,6 +115,10 @@ class CarPayload(BaseModel):
     max_pages: int = 3
     delay: float = 1.0
     refresh: bool = False  # force a live refresh, ignoring the DB-backed provider
+    # Which market's DB to read (see market_provider.MARKET_DB_PATHS). "sk" is
+    # the only one with real data today; not sent by the frontend yet -- see
+    # that module's CZ placeholder comment. Unknown values fall back to "sk".
+    market: str = "sk"
 
 
 def _to_input(p: CarPayload) -> SingleCarInput:
@@ -196,6 +200,9 @@ class InventoryAnalyzePayload(BaseModel):
     delay: float = 1.0
     max_pages: int = 3
     refresh: bool = False  # force a live refresh, ignoring cached pools
+    # See CarPayload.market above -- same placeholder, not sent by the
+    # frontend yet.
+    market: str = "sk"
 
 
 # Shared provider selection, used by BOTH /api/inventory/analyze/stream and
@@ -225,17 +232,27 @@ class InventoryAnalyzePayload(BaseModel):
 # the live/cache provider unconditionally; any other value (including
 # unset, or the now-redundant "market_collector") takes the default path
 # above.
-def _build_market_provider(*, delay: float, refresh: bool, env_var: str, log_prefix: str):
+def _build_market_provider(*, delay: float, refresh: bool, env_var: str, log_prefix: str, market: str = "sk"):
     def _legacy():
         # A persistent, cache-first market layer: fresh (source, brand, model)
         # pools are reused across runs with ZERO HTTP; misses/expiries fetch
         # live and update the cache. `refresh=true` forces a live refresh.
         return PersistentCacheProvider(delay=delay, force_refresh=refresh)
 
+    db_path = MARKET_DB_PATHS.get(market, MARKET_DB_PATHS["sk"])
     if refresh or os.environ.get(env_var) == "legacy":
         return _legacy()
+    if not os.path.exists(db_path):
+        # Expected today for market="cz" (see market_provider.py's CZ
+        # placeholder comment) -- no DB there yet. Skip straight to the
+        # fallback instead of letting MarketCollectorProvider's sqlite3
+        # connect silently create an empty file at that path.
+        if market != "sk":
+            print(f"[v0][{log_prefix}] no DB for market={market!r} at {db_path} yet, "
+                  f"falling back to PersistentCacheProvider.")
+        return _legacy()
     try:
-        return MarketCollectorProvider()
+        return MarketCollectorProvider(db_path=db_path)
     except Exception as exc:  # noqa: BLE001 - degrade, never crash the endpoint
         print(f"[v0][{log_prefix}] MarketCollectorProvider unavailable ({exc!r}), "
               f"falling back to PersistentCacheProvider.")
@@ -245,14 +262,14 @@ def _build_market_provider(*, delay: float, refresh: bool, env_var: str, log_pre
 def _build_inventory_provider(payload: "InventoryAnalyzePayload"):
     return _build_market_provider(
         delay=payload.delay, refresh=payload.refresh,
-        env_var="INVENTORY_MARKET_PROVIDER", log_prefix="inventory",
+        env_var="INVENTORY_MARKET_PROVIDER", log_prefix="inventory", market=payload.market,
     )
 
 
 def _build_compare_provider(payload: "CarPayload"):
     return _build_market_provider(
         delay=payload.delay, refresh=payload.refresh,
-        env_var="COMPARE_MARKET_PROVIDER", log_prefix="compare",
+        env_var="COMPARE_MARKET_PROVIDER", log_prefix="compare", market=payload.market,
     )
 
 
