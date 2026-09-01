@@ -425,8 +425,9 @@ export const sk = {
     docMeta: (date: string) => `Výsledky skladu · vygenerované ${date}`,
     heading: (n: number) => {
       const abs = Math.abs(n)
-      const word = abs === 1 ? "vozidlo" : abs >= 2 && abs <= 4 ? "vozidlá" : "vozidiel"
-      return `${n} ${word} zoradených — od najviac pod trhom po najmenej`
+      const noun = abs === 1 ? "vozidlo" : abs >= 2 && abs <= 4 ? "vozidlá" : "vozidiel"
+      const participle = abs >= 5 || abs === 0 ? "zoradených" : "zoradené"
+      return `${n} ${noun} ${participle} — od najviac pod trhom po najmenej`
     },
     hint: "Kliknutím na riadok zobrazíte podrobnosti zdrojov a porovnateľné inzeráty. Autobazar.eu a Bazoš.sk sú zobrazené oddelene — nikdy sa nezlučujú.",
     tableHeaders: { rank: "#", vehicle: "Vozidlo", asking: "Požadovaná", confidence: "Istota", mileage: "Nájazd" },
@@ -437,5 +438,44 @@ export const sk = {
     chipInsufficient: "Nedostatočná",
     sheetInventory: "Sklad",
     sheetComparables: "Porovnateľné inzeráty",
+  },
+  exportSingle: {
+    printButton: "Tlačiť / Uložiť ako PDF",
+    docMeta: (date: string) => `Správa o ocenení · vygenerované ${date}`,
+    vehicleDetails: "Údaje o vozidle",
+    fields: {
+      brand: "Značka",
+      model: "Model",
+      variant: "Variant",
+      year: "Rok",
+      fuel: "Palivo",
+      mileage: "Nájazd",
+      askingPrice: "Požadovaná cena",
+      power: "Výkon",
+      transmission: "Prevodovka",
+      bodyType: "Karoséria",
+    },
+    overallAssessment: "Celkové hodnotenie",
+    agreement: {
+      agree: "Zdroje sa zhodujú — obe trhoviská mali navzájom veľmi blízke mediánové ceny.",
+      meaningful: "Čiastočná zhoda — trhoviská sa dostatočne líšia na to, aby ste k tomu pristupovali opatrne.",
+      large: "Zdroje sa rozchádzajú — pred dôverou v ktorýkoľvek z nich skontrolujte porovnateľné inzeráty na oboch.",
+    },
+    spreadTail: (pct: number, gap: number | null) =>
+      gap !== null ? `(rozdiel mediánov ${pct} %, rozdiel v ocenení ${gap} %).` : `(rozdiel mediánov ${pct} %).`,
+    sourcesHeading: "Autobazar.eu a Bazoš.sk — zobrazené oddelene, nikdy nezlúčené",
+    footer:
+      "Každé trhovisko sa hodnotí nezávisle — Carval ich nikdy nezlučuje do jedného čísla. „Pod trhom“ znamená cenu nižšiu, než je mediánová požadovaná cena na danom trhu. Hlavná istota vychádza z trhoviska so silnejšou porovnateľnou vzorkou.",
+    notEnoughListings: (n: number) => `Nedostatok porovnateľných inzerátov pre spoľahlivý odhad (nájdených: ${n}).`,
+    marketMedian: "Mediánová cena na trhu",
+    priceRange: "P25 – P75",
+    diffVsAsking: "Rozdiel voči požadovanej cene",
+    assessment: "Hodnotenie",
+    mileageSimilarity: "Podobnosť nájazdu:",
+    mileageDetail: (compRange: string, median: string, thisCar: string) =>
+      ` · porovnateľné ${compRange} (medián ${median}), toto auto ${thisCar}`,
+    viewListing: "Zobraziť inzerát",
+    noComparablesCaptured: "Nezachytili sa žiadne porovnateľné inzeráty.",
+    tableHeaders: { price: "Cena", year: "Rok", mileage: "Nájazd", title: "Názov", link: "Odkaz" },
   },
 }

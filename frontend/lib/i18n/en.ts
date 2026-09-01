@@ -398,4 +398,43 @@ export const en = {
     sheetInventory: "Inventory",
     sheetComparables: "Comparable listings",
   },
+  exportSingle: {
+    printButton: "Print / Save as PDF",
+    docMeta: (date: string) => `Valuation report · generated ${date}`,
+    vehicleDetails: "Vehicle details",
+    fields: {
+      brand: "Brand",
+      model: "Model",
+      variant: "Variant",
+      year: "Year",
+      fuel: "Fuel",
+      mileage: "Mileage",
+      askingPrice: "Asking price",
+      power: "Power",
+      transmission: "Transmission",
+      bodyType: "Body type",
+    },
+    overallAssessment: "Overall assessment",
+    agreement: {
+      agree: "Sources agree — both marketplaces produced closely aligned medians.",
+      meaningful: "Limited agreement — the marketplaces differ enough to treat with care.",
+      large: "Sources disagree — inspect the comparables on each before trusting either.",
+    },
+    spreadTail: (pct: number, gap: number | null) =>
+      gap !== null ? `(${pct}% median spread, ${gap}% valuation gap).` : `(${pct}% median spread).`,
+    sourcesHeading: "Autobazar.eu & Bazoš.sk — shown separately, never merged",
+    footer:
+      "Each marketplace is evaluated independently — Carval never blends them into a single number. “Below market” means priced under that market’s median asking price. The headline confidence uses the marketplace with the stronger comparable sample.",
+    notEnoughListings: (n: number) => `Not enough comparable listings for a reliable estimate (${n} found).`,
+    marketMedian: "Market median",
+    priceRange: "P25 – P75",
+    diffVsAsking: "Difference vs asking",
+    assessment: "Assessment",
+    mileageSimilarity: "Mileage similarity:",
+    mileageDetail: (compRange: string, median: string, thisCar: string) =>
+      ` · comparables ${compRange} (median ${median}), this car ${thisCar}`,
+    viewListing: "View listing",
+    noComparablesCaptured: "No comparable listings captured.",
+    tableHeaders: { price: "Price", year: "Year", mileage: "Mileage", title: "Title", link: "Link" },
+  },
 }

@@ -158,13 +158,14 @@ function openHtmlInNewTab(html: string) {
 /* ========================================================================== */
 /* 1 — SINGLE-CAR: downloadable, print-friendly HTML report                   */
 /* ========================================================================== */
-function comparablesRows(list: Comparable[]): string {
+function comparablesRows(t: Dictionary, list: Comparable[]): string {
+  const th = t.exportSingle.tableHeaders
   const rows = list
     .filter((c) => c.price !== null || c.year !== null || c.km !== null || c.title || c.url)
     .map((c) => {
       const title = c.title ? esc(c.title) : "—"
       const link = c.url
-        ? `<a href="${esc(c.url)}" target="_blank" rel="noreferrer">View listing</a>`
+        ? `<a href="${esc(c.url)}" target="_blank" rel="noreferrer">${esc(t.exportSingle.viewListing)}</a>`
         : "—"
       return `<tr>
         <td class="num">${eur(c.price)}</td>
@@ -175,9 +176,9 @@ function comparablesRows(list: Comparable[]): string {
       </tr>`
     })
     .join("")
-  if (!rows) return `<p class="empty">No comparable listings captured.</p>`
+  if (!rows) return `<p class="empty">${esc(t.exportSingle.noComparablesCaptured)}</p>`
   return `<table class="comps">
-    <thead><tr><th class="num">Price</th><th class="num">Year</th><th class="num">Mileage</th><th>Title</th><th>Link</th></tr></thead>
+    <thead><tr><th class="num">${esc(th.price)}</th><th class="num">${esc(th.year)}</th><th class="num">${esc(th.mileage)}</th><th>${esc(th.title)}</th><th>${esc(th.link)}</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`
 }
@@ -200,9 +201,9 @@ function sourceSection(
     const sampleNotes = s.sample_warnings.map((w) => esc(sampleWarningText(t, w))).join(" ")
     return `<section class="src">
       <div class="src-head"><h3>${esc(title)}</h3><span class="host">${esc(host)}</span></div>
-      <p class="warn">Not enough comparable listings for a reliable estimate (${s.comparable_count} found).
+      <p class="warn">${esc(t.exportSingle.notEnoughListings(s.comparable_count))}
       ${sampleNotes}</p>
-      ${comparablesRows(s.comparables)}
+      ${comparablesRows(t, s.comparables)}
     </section>`
   }
   const tone = toneClass(s.undervaluation_pct)
@@ -215,25 +216,29 @@ function sourceSection(
       <span class="host">${esc(host)}</span>
       <span class="spacer"></span>
       ${s.tier ? `<span class="pill">${esc(tierLabel(s.tier, t.tier))}</span>` : ""}
-      <span class="pill">${s.comparable_count} comparable${s.comparable_count === 1 ? "" : "s"}</span>
+      <span class="pill">${esc(t.count.comparables(s.comparable_count))}</span>
     </div>
     <div class="metrics">
-      <div class="metric"><span class="k">Market median</span><span class="v num">${eur(s.median_asking_eur)}</span></div>
-      <div class="metric"><span class="k">P25 – P75</span><span class="v num">${eur(s.market_p25_eur)} – ${eur(s.market_p75_eur)}</span></div>
-      <div class="metric"><span class="k">Difference vs asking</span><span class="v num ${tone}">${signedEur(dEur)} · ${pct(s.undervaluation_pct)}</span></div>
-      <div class="metric"><span class="k">Assessment</span><span class="v ${tone}">${esc(diffWord(t, s.undervaluation_pct))}</span></div>
+      <div class="metric"><span class="k">${esc(t.exportSingle.marketMedian)}</span><span class="v num">${eur(s.median_asking_eur)}</span></div>
+      <div class="metric"><span class="k">${esc(t.exportSingle.priceRange)}</span><span class="v num">${eur(s.market_p25_eur)} – ${eur(s.market_p75_eur)}</span></div>
+      <div class="metric"><span class="k">${esc(t.exportSingle.diffVsAsking)}</span><span class="v num ${tone}">${signedEur(dEur)} · ${pct(s.undervaluation_pct)}</span></div>
+      <div class="metric"><span class="k">${esc(t.exportSingle.assessment)}</span><span class="v ${tone}">${esc(diffWord(t, s.undervaluation_pct))}</span></div>
     </div>
     <div class="mileage ${mileageSerious ? "warn-box" : ""}">
-      <strong>Mileage similarity:</strong> ${esc(mileage)}
+      <strong>${esc(t.exportSingle.mileageSimilarity)}</strong> ${esc(mileage)}
       ${
         s.mileage.comp_km_median != null
-          ? ` · comparables ${km(s.mileage.comp_km_p25)}–${km(s.mileage.comp_km_p75)} (median ${km(
-              s.mileage.comp_km_median,
-            )}), this car ${km(s.mileage.submitted_km)}`
+          ? esc(
+              t.exportSingle.mileageDetail(
+                `${km(s.mileage.comp_km_p25)}–${km(s.mileage.comp_km_p75)}`,
+                km(s.mileage.comp_km_median),
+                km(s.mileage.submitted_km),
+              ),
+            )
           : ""
       }
     </div>
-    ${comparablesRows(s.comparables)}
+    ${comparablesRows(t, s.comparables)}
   </section>`
 }
 
@@ -248,24 +253,20 @@ function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
   const powerLine =
     car.power_kw != null ? `${car.power_kw} kW${car.power_source ? ` (${esc(car.power_source)})` : ""}` : "—"
 
-  const agreementCopy: Record<string, string> = {
-    agree: "Sources agree — both marketplaces produced closely aligned medians.",
-    meaningful: "Limited agreement — the marketplaces differ enough to treat with care.",
-    large: "Sources disagree — inspect the comparables on each before trusting either.",
-  }
-  const agreement = cross_source.agreement ? agreementCopy[cross_source.agreement] : ""
+  const agreement = cross_source.agreement ? t.exportSingle.agreement[cross_source.agreement] : ""
 
+  const f = t.exportSingle.fields
   const details: [string, string][] = [
-    ["Brand", esc(car.brand)],
-    ["Model", esc(car.model)],
-    ["Variant", esc(car.variant || car.variant_engine || "—")],
-    ["Year", yr(car.year)],
-    ["Fuel", esc(car.fuel || "—")],
-    ["Mileage", km(car.km)],
-    ["Asking price", eur(car.asking_price_eur)],
-    ["Power", powerLine],
-    ["Transmission", esc(car.transmission || "—")],
-    ["Body type", esc(car.body_type || "—")],
+    [f.brand, esc(car.brand)],
+    [f.model, esc(car.model)],
+    [f.variant, esc(car.variant || car.variant_engine || "—")],
+    [f.year, yr(car.year)],
+    [f.fuel, esc(car.fuel || "—")],
+    [f.mileage, km(car.km)],
+    [f.askingPrice, eur(car.asking_price_eur)],
+    [f.power, powerLine],
+    [f.transmission, esc(car.transmission || "—")],
+    [f.bodyType, esc(car.body_type || "—")],
   ]
 
   const warnings = confidence.warnings.length
@@ -329,43 +330,42 @@ function singleCarReportHtml(result: CompareResult, t: Dictionary): string {
   @media print{.print-btn{display:none}.wrap{padding:0}body{font-size:12px}}
 </style></head>
 <body>
-  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+  <button class="print-btn" onclick="window.print()">${esc(t.exportSingle.printButton)}</button>
   <div class="wrap">
     <div class="topbar">
       <div class="brand">Car<span>val</span></div>
-      <div class="doc-meta">Valuation report · generated ${esc(todayISO())}</div>
+      <div class="doc-meta">${esc(t.exportSingle.docMeta(todayISO()))}</div>
     </div>
 
     <h1>${esc(heading)}${car.variant_engine ? ` <span class="num" style="font-size:16px;color:var(--muted)">${esc(car.variant_engine)}</span>` : ""}</h1>
     ${specLine ? `<p class="spec">${specLine}</p>` : ""}
 
-    <h2>Vehicle details</h2>
+    <h2>${esc(t.exportSingle.vehicleDetails)}</h2>
     <div class="grid">
-      ${details.map(([k, v]) => `<div class="dl"><span class="k">${k}</span><span class="v num">${v}</span></div>`).join("")}
+      ${details.map(([k, v]) => `<div class="dl"><span class="k">${esc(k)}</span><span class="v num">${v}</span></div>`).join("")}
     </div>
 
-    <h2>Overall assessment</h2>
+    <h2>${esc(t.exportSingle.overallAssessment)}</h2>
     <div><span class="conf ${confidence.flag}">${esc(confidenceLabel(t, confidence.flag))}</span></div>
     ${confidence.reasons ? `<p class="reasons">${esc(confidence.reasons)}</p>` : ""}
     ${warnings}
     ${
       agreement && cross_source.median_spread_pct !== null
-        ? `<p class="agreement">${esc(agreement)} (${Math.abs(cross_source.median_spread_pct).toFixed(0)}% median spread${
-            cross_source.ab_vs_bz_pct_gap !== null
-              ? `, ${Math.abs(cross_source.ab_vs_bz_pct_gap).toFixed(1)}% valuation gap`
-              : ""
-          }).</p>`
+        ? `<p class="agreement">${esc(agreement)} ${esc(
+            t.exportSingle.spreadTail(
+              Math.round(Math.abs(cross_source.median_spread_pct)),
+              cross_source.ab_vs_bz_pct_gap !== null ? Number(Math.abs(cross_source.ab_vs_bz_pct_gap).toFixed(1)) : null,
+            ),
+          )}</p>`
         : ""
     }
 
-    <h2>Autobazar.eu &amp; Bazoš.sk — shown separately, never merged</h2>
+    <h2>${esc(t.exportSingle.sourcesHeading)}</h2>
     ${sourceSection("Autobazar.eu", "autobazar.eu", "autobazar", sources.autobazar, car.asking_price_eur, t)}
     ${sourceSection("Bazoš.sk", "bazos.sk", "bazos", sources.bazos, car.asking_price_eur, t)}
 
     <div class="foot">
-      Each marketplace is evaluated independently — Carval never blends them into a single number.
-      &ldquo;Below market&rdquo; means priced under that market&rsquo;s median asking price. The headline
-      confidence uses the marketplace with the stronger comparable sample.
+      ${t.exportSingle.footer}
     </div>
   </div>
 </body></html>`
