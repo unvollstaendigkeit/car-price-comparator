@@ -24,13 +24,12 @@ export const sk = {
     tabs: { paste: "Vložiť riadok", manual: "Vyplniť manuálne", vin: "Vyhľadať podľa VIN" },
     quickFill: "Rýchle vyplnenie:",
     paste: {
-      title: "Vložiť riadok",
-      description:
-        "Skopírujte jeden celý riadok z Excelu alebo Google Sheets a vložte ho sem. Hlavičky kopírovať nemusíte.",
+      title: "Vložte riadok z Excelu alebo Google Sheets",
       placeholder: "Sem vložte svoj riadok…",
       detect: "Rozpoznať auto",
       detecting: "Rozpoznávam…",
       tryExample: "Vyskúšať príklad",
+      editPasted: "Upraviť vložený text",
       parseError: "Z tohto textu sa nepodarilo rozpoznať vozidlo. Skontrolujte riadok a skúste to znova.",
       parseFailed: "Spracovanie zlyhalo",
     },
@@ -90,9 +89,7 @@ export const sk = {
     clear: "Vymazať",
     submit: "Porovnať ceny",
     submitting: "Porovnávam…",
-    lowConfidenceTitle: "Odhad s nízkou istotou — prosím, overte",
-    detectedTitle: "Rozpoznané",
-    pleaseVerify: "Prosím, overte",
+    verifyTooltip: "Ubezpečte sa, že táto hodnota je správna",
   },
   confidence: {
     high: "Vysoká istota",

@@ -27,13 +27,12 @@ export const en = {
     tabs: { paste: "Paste a row", manual: "Manual entry", vin: "Search by VIN" },
     quickFill: "Quick fill:",
     paste: {
-      title: "Paste a row",
-      description:
-        "Copy one complete row from Excel or Google Sheets and paste it here. You don't need to copy the headers.",
+      title: "Paste a row from Excel or Google Sheets",
       placeholder: "Paste your row here…",
       detect: "Detect car",
       detecting: "Detecting…",
       tryExample: "Try an example",
+      editPasted: "Edit pasted text",
       parseError: "Couldn't read a vehicle from that text. Check the row and try again.",
       parseFailed: "Parsing failed",
     },
@@ -98,9 +97,7 @@ export const en = {
     clear: "Clear",
     submit: "Compare prices",
     submitting: "Comparing…",
-    lowConfidenceTitle: "Low-confidence guess — please verify",
-    detectedTitle: "Detected",
-    pleaseVerify: "Please verify",
+    verifyTooltip: "Make sure this value is correct",
   },
   confidence: {
     high: "High confidence",
