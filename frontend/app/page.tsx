@@ -32,7 +32,7 @@ export default function Page() {
             Single car
           </ModeTab>
           <ModeTab active={mode === "inventory"} onClick={() => setMode("inventory")}>
-            Inventory
+            Multi-car
           </ModeTab>
         </div>
       </header>
