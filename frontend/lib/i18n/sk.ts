@@ -29,6 +29,7 @@ export const sk = {
       detect: "Rozpoznať auto",
       detecting: "Rozpoznávam…",
       tryExample: "Vyskúšať príklad",
+      editPasted: "Upraviť vložený text",
       parseError: "Z tohto textu sa nepodarilo rozpoznať vozidlo. Skontrolujte riadok a skúste to znova.",
       parseFailed: "Spracovanie zlyhalo",
     },
@@ -88,7 +89,7 @@ export const sk = {
     clear: "Vymazať",
     submit: "Porovnať ceny",
     submitting: "Porovnávam…",
-    verifyTooltip: "Overte hodnotu rozpoznanú z riadku",
+    verifyTooltip: "Ubezpečte sa, že táto hodnota je správna",
   },
   confidence: {
     high: "Vysoká istota",

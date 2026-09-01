@@ -54,6 +54,9 @@ export function CarForm({
   // VIN detected from a pasted row (backend row_parser extras) — not a form
   // field, just shown in the "Detected vehicle" summary.
   const [detectedVin, setDetectedVin] = useState<string | null>(null)
+  // Collapses the paste textarea once a row has been successfully detected,
+  // so the form reads as "detected vehicle" first. Re-expandable by hand.
+  const [pasteCollapsed, setPasteCollapsed] = useState(false)
 
   // VIN lookup state — UI only for now, not wired to a backend/external
   // lookup yet.
@@ -92,6 +95,7 @@ export function CarForm({
       setForm({ ...empty, ...parsed.car })
       setDetected(parsed.fields as DetectMap)
       setDetectedVin(parsed.extras?.vin ?? null)
+      setPasteCollapsed(true)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : t.form.paste.parseFailed)
     } finally {
@@ -109,6 +113,7 @@ export function CarForm({
     setPasteText("")
     setVin("")
     setMode("paste")
+    setPasteCollapsed(false)
     onClear?.()
   }
 
@@ -189,32 +194,45 @@ export function CarForm({
 
       {mode === "paste" && (
         <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
-          <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
-          <textarea
-            id="paste-row"
-            className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            placeholder={t.form.paste.placeholder}
-          />
-          <div className="flex flex-wrap items-center gap-3">
+          {pasteCollapsed && anyDetected ? (
             <button
               type="button"
-              onClick={handleDetect}
-              disabled={pasteText.trim() === "" || parsing}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => setPasteCollapsed(false)}
+              className="flex items-center gap-1.5 self-start text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
             >
-              {parsing ? t.form.paste.detecting : t.form.paste.detect}
+              <span aria-hidden>✎</span>
+              {t.form.paste.editPasted}
             </button>
-            <button
-              type="button"
-              onClick={() => setPasteText(PASTE_EXAMPLE)}
-              className="text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
-            >
-              {t.form.paste.tryExample}
-            </button>
-          </div>
-          {parseError && <p className="text-sm text-danger">{parseError}</p>}
+          ) : (
+            <>
+              <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
+              <textarea
+                id="paste-row"
+                className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={t.form.paste.placeholder}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleDetect}
+                  disabled={pasteText.trim() === "" || parsing}
+                  className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {parsing ? t.form.paste.detecting : t.form.paste.detect}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPasteText(PASTE_EXAMPLE)}
+                  className="text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {t.form.paste.tryExample}
+                </button>
+              </div>
+              {parseError && <p className="text-sm text-danger">{parseError}</p>}
+            </>
+          )}
 
           {anyDetected && (
             <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 px-4 py-3.5">
@@ -421,12 +439,11 @@ function Field({
       <span className="relative flex items-center">
         {children}
         {lowConf && (
-          <span
-            className="absolute right-2.5 cursor-help text-[13px] text-caution"
-            aria-hidden="true"
-            title={t.form.verifyTooltip}
-          >
-            ⚠
+          <span className="group absolute right-2.5 flex cursor-help items-center" aria-hidden="true">
+            <span className="text-[13px] text-caution">⚠</span>
+            <span className="pointer-events-none absolute bottom-full right-0 z-10 mb-1.5 w-max max-w-[220px] rounded-md bg-foreground px-2 py-1 text-[12px] font-normal leading-snug text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100">
+              {t.form.verifyTooltip}
+            </span>
           </span>
         )}
       </span>

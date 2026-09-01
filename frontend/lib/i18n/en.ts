@@ -32,6 +32,7 @@ export const en = {
       detect: "Detect car",
       detecting: "Detecting…",
       tryExample: "Try an example",
+      editPasted: "Edit pasted text",
       parseError: "Couldn't read a vehicle from that text. Check the row and try again.",
       parseFailed: "Parsing failed",
     },
@@ -96,7 +97,7 @@ export const en = {
     clear: "Clear",
     submit: "Compare prices",
     submitting: "Comparing…",
-    verifyTooltip: "Verify the value detected from the row",
+    verifyTooltip: "Make sure this value is correct",
   },
   confidence: {
     high: "High confidence",
