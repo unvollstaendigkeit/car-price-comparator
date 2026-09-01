@@ -141,21 +141,6 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
-function openHtmlInNewTab(html: string) {
-  const w = window.open("", "_blank")
-  if (w) {
-    w.document.open()
-    w.document.write(html)
-    w.document.close()
-    return
-  }
-  // Popup blocked → fall back to a blob URL the browser can still open.
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  window.open(url, "_blank")
-  setTimeout(() => URL.revokeObjectURL(url), 15000)
-}
-
 /* ========================================================================== */
 /* 1 — SINGLE-CAR: downloadable, print-friendly HTML report                   */
 /* ========================================================================== */
@@ -600,65 +585,66 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${esc(t.exportInv.docTitle(cars.length))}</title>
 <style>
-  :root{--bg:#14181d;--surface:#1c2127;--surface2:#232a31;--line:#2f3944;--line2:#3c4753;
-    --fg:#eef1f3;--muted:#aab4bd;--faint:#7d8792;--accent:#35c4d4;
-    --pos:#2fd08a;--neg:#f0925a;--caution:#e6c34d;}
+  :root{--fg:#0f1720;--muted:#5b6673;--faint:#8a94a0;--line:#e4e8ec;--soft:#f6f8fa;
+    --accent:#0e97a7;--pos:#0f9d6b;--neg:#d1662a;--caution:#b0820c;}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);
+  body{margin:0;background:#fff;color:var(--fg);
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;
     -webkit-font-smoothing:antialiased}
   .num{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .pos{color:var(--pos)}.neg{color:var(--neg)}.neutral{color:var(--muted)}.faint{color:var(--faint)}
   .wrap{max-width:1100px;margin:0 auto;padding:28px 22px 80px}
   .topbar{display:flex;justify-content:space-between;align-items:baseline;
-    border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px}
+    border-bottom:2px solid var(--fg);padding-bottom:14px;margin-bottom:18px}
   .brand{font-size:20px;font-weight:600}.brand span{color:var(--accent)}
   .doc-meta{font-size:12px;color:var(--faint)}
   h1{font-size:22px;margin:0 0 14px}
   .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
-  .chip{display:flex;align-items:baseline;gap:7px;border:1px solid var(--line);background:var(--surface2);
+  .chip{display:flex;align-items:baseline;gap:7px;border:1px solid var(--line);background:var(--soft);
     border-radius:7px;padding:6px 11px}
   .chip .n{font-family:ui-monospace,monospace;font-size:17px;font-weight:600}
   .chip .l{font-size:12px;color:var(--faint)}
   .chip.pos .n{color:var(--pos)}.chip.accent .n{color:var(--accent)}
   .chip.caution .n{color:var(--caution)}.chip.muted .n{color:var(--muted)}
   .hint{color:var(--faint);font-size:12px;margin:0 0 10px}
-  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--faint);
-    font-weight:500;padding:10px 12px;background:var(--surface2);border-bottom:1px solid var(--line)}
+    font-weight:500;padding:10px 12px;background:var(--soft);border-bottom:1px solid var(--line)}
   thead th.num{text-align:right}
   .row{cursor:pointer;border-top:1px solid var(--line)}
   .grp:first-child .row{border-top:0}
-  .row:hover{background:var(--surface2)}
+  .row:hover{background:var(--soft)}
   .row td{padding:10px 12px;vertical-align:top}
   td.rank{color:var(--faint)}
-  .vname{font-weight:500}.specs{font-size:12px;margin-top:2px}
+  .vname{font-weight:500}.specs{font-size:12px;margin-top:2px;color:var(--faint)}
   td.asking{text-align:right;font-weight:500}
   .srccell{display:flex;flex-direction:column;gap:2px;font-size:13px}
   .conf{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
-    padding:3px 9px;border-radius:999px;border:1px solid var(--line2)}
-  .conf.HIGH{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 40%,transparent)}
-  .conf.MEDIUM{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
-  .conf.LOW{color:var(--caution);border-color:color-mix(in srgb,var(--caution) 40%,transparent)}
+    padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  .conf.HIGH{color:var(--pos);border-color:var(--pos)}
+  .conf.MEDIUM{color:var(--accent);border-color:var(--accent)}
+  .conf.LOW{color:var(--caution);border-color:var(--caution)}
   .conf.INSUFFICIENT{color:var(--faint)}
   .mbadge{color:var(--neg);font-size:12px}
   .detrow{display:none}
   .grp.open .detrow{display:table-row}
-  .detail{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:6px 12px 16px;background:var(--surface2)}
+  .detail{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:6px 12px 16px;background:var(--soft)}
   .dcol{display:flex;flex-direction:column;gap:6px}
   .dhead{font-weight:500;display:flex;align-items:center;gap:6px}
   .mline{font-size:13px;color:var(--muted)}
   .pill{font-size:10px;font-family:ui-monospace,monospace;text-transform:uppercase;letter-spacing:0.04em;
-    border:1px solid var(--line2);border-radius:4px;padding:1px 5px;color:var(--muted)}
+    border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--muted)}
   .links{display:flex;flex-direction:column;gap:1px;margin-top:2px}
   .links a{color:var(--accent);font-size:12px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .dmeta{grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px;
     display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+  .print-btn{position:fixed;top:16px;right:16px;background:var(--accent);color:#fff;border:0;
+    border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer}
   @media (max-width:720px){.detail{grid-template-columns:1fr}}
   /* Printing / saving as PDF: reveal every source detail (rows are collapsed
-     for interactive scanning, but a saved report must be complete) and keep the
-     themed colors so undervaluation tones survive on paper. */
+     for interactive scanning, but a saved report must be complete). */
   @media print{
+    .print-btn{display:none}
     :root{color-adjust:exact;-webkit-print-color-adjust:exact}
     body{font-size:12px}
     .wrap{max-width:none;padding:0}
@@ -670,6 +656,7 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
   }
 </style></head>
 <body>
+  <button class="print-btn" onclick="window.print()">${esc(t.exportSingle.printButton)}</button>
   <div class="wrap">
     <div class="topbar">
       <div class="brand">Car<span>val</span></div>
@@ -689,10 +676,6 @@ function inventoryResultsHtml(cars: AnalysisCarResult[], summary: AnalysisSummar
     </table>
   </div>
 </body></html>`
-}
-
-export function openInventoryResults(cars: AnalysisCarResult[], summary: AnalysisSummary | null, t: Dictionary) {
-  openHtmlInNewTab(inventoryResultsHtml(cars, summary, t))
 }
 
 /** Download the inventory results as a self-contained HTML report (the same

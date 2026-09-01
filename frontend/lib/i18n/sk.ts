@@ -238,6 +238,13 @@ export const sk = {
     missingBody: "Táto stránka očakáva údaje o vozidle v URL adrese. Vráťte sa a vyplňte formulár znova.",
     backLink: "← Späť na Carval",
   },
+  inventoryResultPage: {
+    pageTitle: "Výsledky pre viac áut — Carval",
+    notFoundTitle: "Tento výsledok už nie je v tomto prehliadači dostupný.",
+    notFoundBody:
+      "Výsledky pre viac áut zostávajú dostupné len v karte (a prehliadači), kde analýza prebehla — nejde o zdieľateľný odkaz. Vráťte sa a spustite analýzu znova, alebo použite Exportovať výsledky / Exportovať správu, ak chcete kópiu, ktorú môžete poslať komukoľvek.",
+    backLink: "← Späť na Carval",
+  },
   errors: {
     comparisonFailed: "Porovnanie zlyhalo",
     requestFailed: "Požiadavka zlyhala",

@@ -234,6 +234,13 @@ export const en = {
     missingBody: "This page expects the car's details in the URL. Go back and submit the form again.",
     backLink: "← Back to Carval",
   },
+  inventoryResultPage: {
+    pageTitle: "Multi-car results — Carval",
+    notFoundTitle: "This result is no longer available in this browser.",
+    notFoundBody:
+      "Multi-car results only stay available in the tab (and browser) that ran the analysis — this isn't a shareable link. Go back and run the analysis again, or use Export result / Export report for a copy you can send to anyone.",
+    backLink: "← Back to Carval",
+  },
   errors: {
     comparisonFailed: "Comparison failed",
     requestFailed: "Request failed",

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import type { CarInput, ParsedField } from "@/lib/types"
 import { parseRow } from "@/lib/api"
-import { fmtEur, fmtKm, fmtYear } from "@/lib/format"
+import { fmtEur, fmtKm, fmtYear, mapLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n/use-t"
 
 const FUELS = ["", "Petrol", "Diesel", "Hybrid", "PHEV", "Electric", "LPG", "CNG"]
@@ -138,11 +138,11 @@ export function CarForm({
   const detectedTitle = [form.brand, form.model, form.variant].filter(Boolean).join(" ")
   const detectedSpec = [
     fmtYear(form.year),
-    form.fuel,
+    mapLabel(form.fuel, t.form.fuelLabels),
     form.km ? fmtKm(form.km) : null,
-    form.body_type || null,
+    mapLabel(form.body_type || null, t.form.bodyTypeLabels),
     detectedVin,
-    form.transmission || null,
+    mapLabel(form.transmission || null, t.form.transmissionLabels),
   ]
     .filter((v) => v && v !== "—")
     .join(" · ")

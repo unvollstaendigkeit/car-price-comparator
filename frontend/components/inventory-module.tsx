@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import type { AnalysisCarResult, AnalysisEvent, AnalysisSummary, InventoryReport, InventoryRow } from "@/lib/types"
 import { loadInventoryDemo, parseInventory, streamInventoryAnalysis } from "@/lib/api"
 import { cn } from "@/lib/format"
-import { exportInventoryXlsx, exportInventoryReport, openInventoryResults } from "@/lib/exports"
+import { exportInventoryXlsx, exportInventoryReport } from "@/lib/exports"
+import { saveInventoryResult } from "@/lib/inventory-result-storage"
 import { useT } from "@/lib/i18n/use-t"
 import type { Dictionary } from "@/lib/i18n/dictionaries"
 import { Disclosure } from "@/components/disclosure"
@@ -640,7 +641,10 @@ function AnalysisPanel({
                     </button>
                     <button
                       type="button"
-                      onClick={() => openInventoryResults(ranked, summary, t)}
+                      onClick={() => {
+                        const id = saveInventoryResult(ranked, summary)
+                        window.open(`/inventory-result?id=${id}`, "_blank", "noopener,noreferrer")
+                      }}
                       title={t.inventory.analysis.openResultsTitle}
                       className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-muted transition-colors hover:border-border-strong hover:text-foreground"
                     >
@@ -835,7 +839,7 @@ function AnalysisPanel({
   )
 }
 
-function SummaryStat({
+export function SummaryStat({
   label,
   value,
   tone,
