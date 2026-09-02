@@ -283,13 +283,6 @@ export function CarForm({
         </div>
       )}
 
-      {anyDetected && (
-        <div className="flex flex-col gap-0.5">
-          <h3 className="text-[15px] font-medium text-foreground">{t.form.reviewFields.title}</h3>
-          <p className="text-[13px] text-faint">{t.form.reviewFields.helper}</p>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Field label={t.form.fields.brand} required mark={detected.brand}>
           <input

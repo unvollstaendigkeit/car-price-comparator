@@ -41,10 +41,6 @@ export const en = {
       fallback: "Vehicle",
       missingWarning: "Some details couldn't be detected. Please check the fields below.",
     },
-    reviewFields: {
-      title: "Review the details",
-      helper: "Adjust any values Carval didn't detect correctly.",
-    },
     vin: {
       title: "Search by VIN",
       description:
