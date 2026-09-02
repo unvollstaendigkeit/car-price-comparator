@@ -17,13 +17,13 @@ export default function Page() {
     <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-7 px-4 py-8 md:px-6 md:py-10">
       <header className="flex flex-col gap-4 border-b border-border pb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             {/* Plain <a>, not next/link's <Link>: we're already on "/", and
                 Link's client-side router treats a same-path navigation as a
                 no-op (no reload, no state reset). A real anchor forces an
                 actual reload, which is what "go home" should feel like here
                 - locale survives it fine since it lives in localStorage. */}
-            <a href="/" className="w-fit text-3xl font-semibold tracking-tight">
+            <a href="/" className="w-fit text-4xl font-semibold tracking-tight">
               <span className="text-foreground">Car</span>
               <span className="text-accent">val</span>
             </a>

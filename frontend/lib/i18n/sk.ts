@@ -13,7 +13,7 @@ export const sk = {
     fuel: "palivo",
   },
   header: {
-    tagline: "Ocenenie ojazdeného auta na základe dvoch nezávislých trhovísk — vždy zobrazené oddelene, nikdy nezlúčené.",
+    tagline: "Menej odhadov. Viac marže.",
   },
   tabs: {
     single: "Jedno auto",

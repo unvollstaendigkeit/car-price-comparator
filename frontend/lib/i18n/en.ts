@@ -16,7 +16,7 @@ export const en = {
     fuel: "fuel",
   },
   header: {
-    tagline: "Used-car valuation against two independent marketplaces — shown separately, never merged.",
+    tagline: "Less guesswork. More margin.",
   },
   tabs: {
     single: "Single car",

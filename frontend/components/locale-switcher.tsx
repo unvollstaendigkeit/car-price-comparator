@@ -9,20 +9,19 @@ const LABELS: Record<Locale, string> = { sk: "SK", en: "EN" }
 export function LocaleSwitcher() {
   const { locale, setLocale } = useLocale()
   return (
-    <div role="group" aria-label="Language" className="inline-flex w-fit rounded-md border border-border bg-surface p-0.5">
-      {OPTIONS.map((l) => (
-        <button
-          key={l}
-          type="button"
-          aria-pressed={locale === l}
-          onClick={() => setLocale(l)}
-          className={cn(
-            "rounded px-2 py-1 text-[13px] font-medium transition-colors",
-            locale === l ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground",
-          )}
-        >
-          {LABELS[l]}
-        </button>
+    <div role="group" aria-label="Language" className="inline-flex w-fit items-center gap-1.5 text-[13px] font-medium">
+      {OPTIONS.map((l, i) => (
+        <span key={l} className="flex items-center gap-1.5">
+          {i > 0 && <span className="text-faint">|</span>}
+          <button
+            type="button"
+            aria-pressed={locale === l}
+            onClick={() => setLocale(l)}
+            className={cn("transition-colors", locale === l ? "text-accent" : "text-faint hover:text-foreground")}
+          >
+            {LABELS[l]}
+          </button>
+        </span>
       ))}
     </div>
   )
