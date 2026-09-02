@@ -37,9 +37,13 @@ export const en = {
       parseFailed: "Parsing failed",
     },
     detected: {
-      label: "Detected vehicle",
+      recognizedPrefix: "Recognized",
       fallback: "Vehicle",
       missingWarning: "Some details couldn't be detected. Please check the fields below.",
+    },
+    reviewFields: {
+      title: "Review the details",
+      helper: "Adjust any values Carval didn't detect correctly.",
     },
     vin: {
       title: "Search by VIN",

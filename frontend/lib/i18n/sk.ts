@@ -34,9 +34,13 @@ export const sk = {
       parseFailed: "Spracovanie zlyhalo",
     },
     detected: {
-      label: "Rozpoznané vozidlo",
+      recognizedPrefix: "Rozpoznané",
       fallback: "Vozidlo",
       missingWarning: "Niektoré údaje sa nepodarilo rozpoznať. Skontrolujte polia nižšie.",
+    },
+    reviewFields: {
+      title: "Skontrolujte údaje",
+      helper: "Upravte hodnoty, ktoré Carval nerozpoznal správne.",
     },
     vin: {
       title: "Vyhľadať podľa VIN",

@@ -156,10 +156,10 @@ export function CarForm({
   const missingImportant = anyDetected && (!form.brand || !form.model || !form.year || !form.price)
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-lg border border-border bg-surface px-5 py-5">
+      <div className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-foreground">{t.form.title}</h2>
-        <div className="inline-flex rounded-md border border-border p-0.5">
+        <div className="flex gap-5 border-b border-border">
           <ModeTab active={mode === "paste"} onClick={() => setMode("paste")}>
             {t.form.tabs.paste}
           </ModeTab>
@@ -173,7 +173,7 @@ export function CarForm({
       </div>
 
       {mode === "manual" && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-[13px] text-faint">{t.form.quickFill}</span>
           {EXAMPLES.map((ex) => (
             <button
@@ -193,7 +193,7 @@ export function CarForm({
       )}
 
       {mode === "paste" && (
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+        <div className="flex flex-col gap-3">
           {pasteCollapsed && anyDetected ? (
             <button
               type="button"
@@ -235,15 +235,18 @@ export function CarForm({
           )}
 
           {anyDetected && (
-            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 px-4 py-3.5">
-              <div className="flex flex-col gap-0.5">
-                <p className="text-[13px] font-medium uppercase tracking-wide text-faint">{t.form.detected.label}</p>
-                <p className="text-lg font-semibold text-foreground">{detectedTitle || t.form.detected.fallback}</p>
-                {detectedSpec && <p className="text-sm text-muted">{detectedSpec}</p>}
-              </div>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-[14px] text-foreground">
+                <span className="text-accent" aria-hidden>
+                  ✓
+                </span>{" "}
+                {t.form.detected.recognizedPrefix}:{" "}
+                <span className="font-semibold">{detectedTitle || t.form.detected.fallback}</span>
+              </p>
+              {detectedSpec && <p className="pl-[21px] text-[13px] text-muted">{detectedSpec}</p>}
 
               {missingImportant && (
-                <p className="flex items-start gap-1.5 text-[13px] text-caution">
+                <p className="mt-0.5 flex items-start gap-1.5 pl-[21px] text-[13px] text-caution">
                   <span aria-hidden>⚠</span>
                   <span>{t.form.detected.missingWarning}</span>
                 </p>
@@ -254,7 +257,7 @@ export function CarForm({
       )}
 
       {mode === "vin" && (
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <h3 className="text-[15px] font-medium text-foreground">{t.form.vin.title}</h3>
             <p className="text-[13px] text-muted">{t.form.vin.description}</p>
@@ -280,18 +283,14 @@ export function CarForm({
         </div>
       )}
 
-      <div className="relative grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
-        <span className="group absolute right-5 top-2.5 z-10 flex cursor-help items-center">
-          <span
-            aria-hidden
-            className="flex h-5 w-5 items-center justify-center rounded-full border border-accent/60 text-[12px] font-semibold text-accent transition-colors group-hover:border-accent group-hover:text-foreground"
-          >
-            i
-          </span>
-          <span className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-max max-w-[260px] rounded-md bg-foreground px-2 py-1 text-[12px] font-normal leading-snug text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100">
-            {t.form.footerHint}
-          </span>
-        </span>
+      {anyDetected && (
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-[15px] font-medium text-foreground">{t.form.reviewFields.title}</h3>
+          <p className="text-[13px] text-faint">{t.form.reviewFields.helper}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Field label={t.form.fields.brand} required mark={detected.brand}>
           <input
             className="ab-input"
@@ -378,7 +377,8 @@ export function CarForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-end gap-4 border-t border-border px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <p className="text-[13px] text-faint">{t.form.footerHint}</p>
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -416,8 +416,8 @@ function ModeTab({
       onClick={onClick}
       aria-pressed={active}
       className={
-        "rounded px-3 py-1.5 text-[13px] font-medium transition-colors " +
-        (active ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground")
+        "-mb-px border-b-2 px-0.5 pb-2 text-[13px] font-medium transition-colors " +
+        (active ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground")
       }
     >
       {children}
