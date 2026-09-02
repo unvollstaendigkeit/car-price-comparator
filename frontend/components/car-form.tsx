@@ -19,6 +19,7 @@ const PASTE_EXAMPLE =
   "10.7.2014\tDiesel\tVW\tPolo\t1,4 TDI BMT Highline 90HK 5d\thatchback\tWVWZZZ6RZFY064440\tBlack\t280,000\t2,300"
 
 type DetectMap = Partial<Record<keyof CarInput, ParsedField>>
+type Mode = "manual" | "paste" | "vin"
 
 const empty: CarInput = {
   brand: "",
@@ -33,6 +34,12 @@ const empty: CarInput = {
   body_type: "",
 }
 
+// Each input method (paste / manual / VIN) keeps its own independent
+// vehicle-in-progress - switching tabs must not leak one method's data into
+// another's fields.
+type ModeState = { form: CarInput; detected: DetectMap; detectedVin: string | null }
+const emptyModeState = (): ModeState => ({ form: empty, detected: {}, detectedVin: null })
+
 export function CarForm({
   onSubmit,
   onClear,
@@ -43,17 +50,18 @@ export function CarForm({
   busy: boolean
 }) {
   const t = useT()
-  const [mode, setMode] = useState<"manual" | "paste" | "vin">("paste")
-  const [form, setForm] = useState<CarInput>(empty)
+  const [mode, setMode] = useState<Mode>("paste")
+  const [modeStates, setModeStates] = useState<Record<Mode, ModeState>>({
+    paste: emptyModeState(),
+    manual: emptyModeState(),
+    vin: emptyModeState(),
+  })
+  const { form, detected, detectedVin } = modeStates[mode]
 
   // paste-row state
   const [pasteText, setPasteText] = useState("")
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
-  const [detected, setDetected] = useState<DetectMap>({})
-  // VIN detected from a pasted row (backend row_parser extras) — not a form
-  // field, just shown in the "Detected vehicle" summary.
-  const [detectedVin, setDetectedVin] = useState<string | null>(null)
   // Collapses the paste textarea once a row has been successfully detected,
   // so the form reads as "detected vehicle" first. Re-expandable by hand.
   const [pasteCollapsed, setPasteCollapsed] = useState(false)
@@ -62,14 +70,19 @@ export function CarForm({
   // lookup yet.
   const [vin, setVin] = useState("")
 
+  // Patches only the CURRENTLY ACTIVE mode's slot - keeps the three input
+  // methods from leaking data into each other.
+  const patchModeState = (updates: Partial<ModeState>) => {
+    setModeStates((prev) => ({ ...prev, [mode]: { ...prev[mode], ...updates } }))
+  }
+
   const set = <K extends keyof CarInput>(key: K, value: CarInput[K]) => {
-    setForm((f) => ({ ...f, [key]: value }))
-    // once a field is touched by hand it is no longer a "detected" value
-    setDetected((d) => {
-      if (!d[key]) return d
-      const next = { ...d }
-      delete next[key]
-      return next
+    setModeStates((prev) => {
+      const cur = prev[mode]
+      // once a field is touched by hand it is no longer a "detected" value
+      const nextDetected = { ...cur.detected }
+      delete nextDetected[key]
+      return { ...prev, [mode]: { ...cur, form: { ...cur.form, [key]: value }, detected: nextDetected } }
     })
   }
 
@@ -92,9 +105,11 @@ export function CarForm({
         setParsing(false)
         return
       }
-      setForm({ ...empty, ...parsed.car })
-      setDetected(parsed.fields as DetectMap)
-      setDetectedVin(parsed.extras?.vin ?? null)
+      patchModeState({
+        form: { ...empty, ...parsed.car },
+        detected: parsed.fields as DetectMap,
+        detectedVin: parsed.extras?.vin ?? null,
+      })
       setPasteCollapsed(true)
     } catch (err) {
       setParseError(err instanceof Error ? err.message : t.form.paste.parseFailed)
@@ -106,9 +121,7 @@ export function CarForm({
   // Reset everything back to the initial input state (paste mode, empty form),
   // and ask the parent to drop any current comparison results. No page reload.
   const handleClear = () => {
-    setForm(empty)
-    setDetected({})
-    setDetectedVin(null)
+    setModeStates({ paste: emptyModeState(), manual: emptyModeState(), vin: emptyModeState() })
     setParseError(null)
     setPasteText("")
     setVin("")
@@ -120,7 +133,7 @@ export function CarForm({
   const hasInput =
     pasteText.trim() !== "" ||
     vin.trim() !== "" ||
-    Object.values(form).some((v) => v !== "" && v !== undefined)
+    Object.values(modeStates).some((s) => Object.values(s.form).some((v) => v !== "" && v !== undefined))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -139,8 +152,14 @@ export function CarForm({
 
   const anyDetected = Object.keys(detected).length > 0
 
-  // Human-readable "Detected vehicle" summary line.
-  const detectedTitle = [form.brand, form.model, form.variant].filter(Boolean).join(" ")
+  // Human-readable "Detected vehicle" summary line. Drops trailing
+  // power/door-count tokens (e.g. "90HK 5d") - useful in the raw variant
+  // field, just noise in this one-line confirmation.
+  const displayVariant = (form.variant ?? "")
+    .replace(/\s+\d+\s*(HK|kW)\b/gi, "")
+    .replace(/\s+\d+\s*d\b/gi, "")
+    .trim()
+  const detectedTitle = [form.brand, form.model, displayVariant].filter(Boolean).join(" ")
   const detectedSpec = [
     fmtYear(form.year),
     mapLabel(form.fuel, t.form.fuelLabels),
@@ -156,10 +175,10 @@ export function CarForm({
   const missingImportant = anyDetected && (!form.brand || !form.model || !form.year || !form.price)
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 rounded-lg border border-border bg-surface px-6 py-6">
+      <div className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-foreground">{t.form.title}</h2>
-        <div className="inline-flex rounded-md border border-border p-0.5">
+        <div className="flex gap-2">
           <ModeTab active={mode === "paste"} onClick={() => setMode("paste")}>
             {t.form.tabs.paste}
           </ModeTab>
@@ -173,17 +192,13 @@ export function CarForm({
       </div>
 
       {mode === "manual" && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-[13px] text-faint">{t.form.quickFill}</span>
           {EXAMPLES.map((ex) => (
             <button
               key={`${ex.brand}-${ex.model}`}
               type="button"
-              onClick={() => {
-                setForm({ ...empty, ...ex })
-                setDetected({})
-                setDetectedVin(null)
-              }}
+              onClick={() => patchModeState({ form: { ...empty, ...ex }, detected: {}, detectedVin: null })}
               className="rounded border border-border px-2.5 py-1 text-[13px] text-muted hover:border-border-strong hover:text-foreground"
             >
               {ex.brand} {ex.model}
@@ -193,25 +208,15 @@ export function CarForm({
       )}
 
       {mode === "paste" && (
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
-          {pasteCollapsed && anyDetected ? (
-            <button
-              type="button"
-              onClick={() => setPasteCollapsed(false)}
-              className="flex items-center gap-1.5 self-start text-[13px] text-muted underline-offset-2 hover:text-foreground hover:underline"
-            >
-              <span aria-hidden>✎</span>
-              {t.form.paste.editPasted}
-            </button>
-          ) : (
+        <div className="flex flex-col gap-6 py-2">
+          {(!pasteCollapsed || !anyDetected) && (
             <>
-              <h3 className="text-[15px] font-medium text-foreground">{t.form.paste.title}</h3>
               <textarea
                 id="paste-row"
                 className="ab-input min-h-[76px] resize-y font-mono text-[13px] leading-relaxed"
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
-                placeholder={t.form.paste.placeholder}
+                placeholder={t.form.paste.title}
               />
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -235,8 +240,21 @@ export function CarForm({
           )}
 
           {anyDetected && (
-            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 px-4 py-3.5">
-              <div className="flex flex-col gap-0.5">
+            <div className="relative flex flex-col gap-3 rounded-md bg-surface-2/70 px-4 py-3.5">
+              {pasteCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => setPasteCollapsed(false)}
+                  title={t.form.paste.editPasted}
+                  aria-label={t.form.paste.editPasted}
+                  className="absolute right-[13px] top-3 text-muted transition-colors hover:text-foreground"
+                >
+                  <span aria-hidden className="inline-block -scale-x-100">
+                    ✎
+                  </span>
+                </button>
+              )}
+              <div className="flex flex-col gap-0.5 pr-6">
                 <p className="text-[13px] font-medium uppercase tracking-wide text-faint">{t.form.detected.label}</p>
                 <p className="text-lg font-semibold text-foreground">{detectedTitle || t.form.detected.fallback}</p>
                 {detectedSpec && <p className="text-sm text-muted">{detectedSpec}</p>}
@@ -254,12 +272,8 @@ export function CarForm({
       )}
 
       {mode === "vin" && (
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
-          <div className="flex flex-col gap-1">
-            <h3 className="text-[15px] font-medium text-foreground">{t.form.vin.title}</h3>
-            <p className="text-[13px] text-muted">{t.form.vin.description}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-wrap items-center gap-8 py-3">
             <input
               className="ab-input max-w-xs font-mono text-[13px] uppercase tracking-wide"
               value={vin}
@@ -280,8 +294,8 @@ export function CarForm({
         </div>
       )}
 
-      <div className="relative grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
-        <span className="group absolute right-5 top-2.5 z-10 flex cursor-help items-center">
+      <div className="relative mt-2 grid grid-cols-2 gap-4 md:grid-cols-3">
+        <span className="group absolute right-0 -top-4 z-10 flex cursor-help items-center">
           <span
             aria-hidden
             className="flex h-5 w-5 items-center justify-center rounded-full border border-accent/60 text-[12px] font-semibold text-accent transition-colors group-hover:border-accent group-hover:text-foreground"
@@ -378,7 +392,7 @@ export function CarForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-end gap-4 border-t border-border px-5 py-4">
+      <div className="flex flex-wrap items-center justify-end gap-4">
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -416,8 +430,8 @@ function ModeTab({
       onClick={onClick}
       aria-pressed={active}
       className={
-        "rounded px-3 py-1.5 text-[13px] font-medium transition-colors " +
-        (active ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground")
+        "rounded-md px-3 py-1.5 text-[14px] font-medium transition-colors " +
+        (active ? "bg-accent/10 text-accent" : "text-muted hover:bg-surface-2 hover:text-foreground")
       }
     >
       {children}

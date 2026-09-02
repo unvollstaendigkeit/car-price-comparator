@@ -25,7 +25,6 @@ export const sk = {
     quickFill: "Rýchle vyplnenie:",
     paste: {
       title: "Vložte riadok z Excelu alebo Google Sheets",
-      placeholder: "Sem vložte svoj riadok…",
       detect: "Rozpoznať auto",
       detecting: "Rozpoznávam…",
       tryExample: "Vyskúšať príklad",
@@ -39,9 +38,6 @@ export const sk = {
       missingWarning: "Niektoré údaje sa nepodarilo rozpoznať. Skontrolujte polia nižšie.",
     },
     vin: {
-      title: "Vyhľadať podľa VIN",
-      description:
-        "Vložte identifikačné číslo vozidla (VIN) na vyhľadanie jeho údajov v externom registri. Toto vyhľadávanie zatiaľ nie je pripojené — zatiaľ použite Vložiť riadok alebo Vyplniť manuálne nižšie.",
       lookup: "Vyhľadať VIN",
       comingSoonTitle: "Vyhľadávanie podľa VIN čoskoro",
       comingSoon: "Dostupné čoskoro",

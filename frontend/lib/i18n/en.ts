@@ -28,7 +28,6 @@ export const en = {
     quickFill: "Quick fill:",
     paste: {
       title: "Paste a row from Excel or Google Sheets",
-      placeholder: "Paste your row here…",
       detect: "Detect car",
       detecting: "Detecting…",
       tryExample: "Try an example",
@@ -42,9 +41,6 @@ export const en = {
       missingWarning: "Some details couldn't be detected. Please check the fields below.",
     },
     vin: {
-      title: "Search by VIN",
-      description:
-        "Paste a vehicle identification number to look up its details from an external registry. This lookup isn't connected yet — for now, use Paste a row or Manual entry below.",
       lookup: "Look up VIN",
       comingSoonTitle: "VIN lookup is coming soon",
       comingSoon: "Coming soon",

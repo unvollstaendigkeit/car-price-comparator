@@ -92,10 +92,17 @@
   }
   .ab-input:focus {
     outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 1px var(--color-accent);
+    border-color: color-mix(in oklch, var(--color-accent) 55%, var(--color-border));
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-accent) 35%, transparent);
   }
   select.ab-input {
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a92a0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1rem;
   }
 }
